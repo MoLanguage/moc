@@ -1,6 +1,7 @@
-[package]
-name = "moc"
-version = "0.1.0"
-edition = "2021"
+[workspace]
+members = [
+    "moc-cranelift",
+    "moc-cli"
+]
 
-[dependencies]
+resolver = "2"
