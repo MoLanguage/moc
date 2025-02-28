@@ -1,5 +1,5 @@
 use std::{fs::{File}, path::Path};
-
-pub fn compile_file(path: impl AsRef<Path>) {
-    let file = File::open(path);
+use cranelift_codegen;
+pub fn compile_src(path_to_src: impl AsRef<Path>) {
+    let src = File::open(path_to_src).unwrap();
 }

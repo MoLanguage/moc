@@ -1,7 +1,9 @@
 [package]
 name = "moc-cranelift"
+description = "Cranelift backend of the Mo compiler"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+cranelift-codegen = { version = "0.113.1", features = ["all-native-arch", "x86"] }
 cranelift-frontend = "0.113.1"
