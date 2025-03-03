@@ -6,7 +6,7 @@ use crate::{Token, TokenLocation, TokenType};
 #[derive(Clone)]
 pub struct Lexer<'a> {
     chars: Peekable<Chars<'a>>,
-    location: TokenLocation
+    location: TokenLocation,
 }
 
 impl<'a> Iterator for Lexer<'a> {
@@ -21,7 +21,7 @@ impl<'a> Lexer<'a> {
     pub fn new(input: &'a str) -> Self {
         Self {
             chars: input.chars().peekable(),
-            location: TokenLocation::default()
+            location: TokenLocation::default(),
         }
     }
 
@@ -31,18 +31,24 @@ impl<'a> Lexer<'a> {
     }
 
     fn advance(&mut self) -> Option<char> {
-        let next = self.chars.peek();
-        if next == Some(&'\r') { // windows CRLF
-            self.chars.next();
-            if self.chars.peek() == Some(&'\n') {
-                self.line_break();
-            }
-        } else if next == Some(&'\n') { // linux and mac LF
-            self.line_break();
-        } else {
-            self.location.column += 1; // no line break
-        }
+        self.location.column += 1;
         self.chars.next()
+    }
+
+    fn lex_crlf(&mut self) -> Option<Token> {
+        self.advance();
+        if self.chars.peek() == Some(&'\n') {
+            self.advance();
+            self.line_break();
+            return Some(Token::new(TokenType::LineBreak, self.location));
+        }
+        None
+    }
+
+    fn lex_lf(&mut self) -> Token {
+        self.advance();
+        self.line_break();
+        Token::new(TokenType::LineBreak, self.location)
     }
 
     pub fn next_token(&mut self) -> Option<Token> {
@@ -58,10 +64,12 @@ impl<'a> Lexer<'a> {
                     }
                     self.lex_operator(ch) // if we have a single slash, it's a divide operator
                 }
-                ' ' | '\t' | '\r' => {
+                ' ' | '\t' => {
                     self.advance()?;
                     continue;
                 } // Skip whitespace
+                '\r' => self.lex_crlf(),
+                '\n' => Some(self.lex_lf()),
                 '{' => {
                     self.advance()?;
                     Some(Token::new(TokenType::OpenBrace, self.location))
@@ -86,9 +94,9 @@ impl<'a> Lexer<'a> {
                     }
                     Some(Token::new(TokenType::Colon, self.location))
                 }
-                ';' | '\n' => {
+                ';' => {
                     self.advance()?;
-                    Some(Token::new(TokenType::EndOfStatement, self.location))
+                    Some(Token::new(TokenType::Semicolon, self.location))
                 }
                 '=' => {
                     self.advance()?;
@@ -127,7 +135,7 @@ impl<'a> Lexer<'a> {
             if let Some(token_type) = token_type {
                 // is a 2 character operator
                 self.advance()?;
-                return Some(Token::new(token_type, self.location))
+                return Some(Token::new(token_type, self.location));
             }
         } else {
             return match ch {
@@ -141,7 +149,7 @@ impl<'a> Lexer<'a> {
                 '<' => Some(Token::new(TokenType::Less, self.location)),
                 '>' => Some(Token::new(TokenType::Greater, self.location)),
                 _ => None,
-            }
+            };
         }
         None
     }
@@ -216,6 +224,10 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
-        if is_valid { Some(Token::string_literal(literal, self.location)) } else { None }
+        if is_valid {
+            Some(Token::string_literal(literal, self.location))
+        } else {
+            None
+        }
     }
 }

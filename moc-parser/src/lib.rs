@@ -38,6 +38,7 @@ pub enum TokenType {
     Minus,
     Slash,
     Star,
+    Semicolon,
     Mod,
     AddAssign,
     SubAssign,
@@ -49,7 +50,7 @@ pub enum TokenType {
     OpenParen,
     CloseParen,
     Colon,
-    EndOfStatement, // change to semicolon and \n
+    LineBreak, // encompassing CRLF and LF in one token.
     Declare,
     Assign,
     Struct,
