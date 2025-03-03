@@ -20,7 +20,7 @@ impl<'a> Iterator for Lexer<'a> {
 #[derive(Debug)]
 pub enum LexerError {
     UnendingStringLiteral(CodeLocation),
-    InvalidCharacter,
+    InvalidCharacter(char),
     UnknownEscapeCharacter,
     UnknownToken,
 }
@@ -65,6 +65,22 @@ impl<'a> Lexer<'a> {
         while let Some(ch) = self.chars.peek() {
             let ch = *ch;
             let token = match ch {
+                '.' => {
+                    self.advance();
+                    Ok(Token::new(TokenType::Dot, self.location))
+                }
+                '!' => {
+                    self.advance();
+                    Ok(Token::new(TokenType::Excl, self.location))
+                }
+                '@' => {
+                    self.advance();
+                    Ok(Token::new(TokenType::At, self.location))
+                }
+                ',' => {
+                    self.advance();
+                    Ok(Token::new(TokenType::Comma, self.location))
+                }
                 '/' => {
                     self.advance();
                     if self.chars.peek() == Some(&'/') {
@@ -127,7 +143,7 @@ impl<'a> Lexer<'a> {
                 '0'..='9' => return Ok(self.lex_number()),
                 'a'..='z' | 'A'..='Z' | '_' => return Ok(self.lex_ident()),
                 '\"' => return self.lex_string_literal(),
-                _ => Err(LexerError::InvalidCharacter), // TODO: return proper LexerError
+                _ => Err(LexerError::InvalidCharacter(ch)), // TODO: return proper LexerError
             };
             return token;
         }
@@ -141,6 +157,7 @@ impl<'a> Lexer<'a> {
                 '+' => TokenType::AddAssign,
                 '-' => TokenType::SubAssign,
                 '*' => TokenType::MultAssign,
+                '/' => TokenType::DivAssign,
                 '%' => TokenType::ModAssign,
                 '&' => TokenType::BitAndAssign,
                 '|' => TokenType::BitOrAssign,
@@ -158,6 +175,7 @@ impl<'a> Lexer<'a> {
                 '+' => TokenType::Plus,
                 '-' => TokenType::Minus,
                 '*' => TokenType::Star,
+                '/' => TokenType::Slash,
                 '%' => TokenType::Mod,
                 '&' => TokenType::BitAnd,
                 '|' => TokenType::BitOr,
@@ -203,6 +221,8 @@ impl<'a> Lexer<'a> {
             "is" => Token::new(TokenType::Is, self.location),
             "else" => Token::new(TokenType::Else, self.location),
             "loop" => Token::new(TokenType::Loop, self.location),
+            "for" => Token::new(TokenType::For, self.location),
+            "in" => Token::new(TokenType::In, self.location),
             "break" => Token::new(TokenType::Break, self.location),
             "fn" => Token::new(TokenType::Fn, self.location),
             "struct" => Token::new(TokenType::Struct, self.location),
