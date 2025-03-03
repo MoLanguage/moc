@@ -2,10 +2,16 @@ pub mod lexer;
 pub mod parser;
 
 #[derive(Debug, Clone)]
-pub enum Token {
-    Ident(String),
-    NumberLiteral(String),
-    StringLiteral(String),
+pub struct Token {
+    pub _type: TokenType,
+    value: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TokenType {
+    Ident,
+    NumberLiteral,
+    StringLiteral,
     True,
     False,
     Excl,
@@ -53,8 +59,20 @@ pub enum Token {
 }
 
 impl Token {
-    fn string_literal(literal: &str) -> Self {
-        Self::StringLiteral(literal.into())
+    fn string_literal(literal: String) -> Self {
+        Self { _type: TokenType::StringLiteral, value: Some(literal.into()) }
+    }
+    fn new_ident(ident: String) -> Self {
+        Self { _type: TokenType::Ident, value: Some(ident.into()) }
+    }
+    fn number_literal(literal: String) -> Self {
+        Self { _type: TokenType::NumberLiteral, value: Some(literal.into()) }
+    }
+    fn new(_type: TokenType) -> Self {
+        Self { _type, value: None }
+    }
+    pub fn value(&self) -> Option<&String> {
+        self.value.as_ref()
     }
 }
 

@@ -1,7 +1,7 @@
 use std::iter::Peekable;
 use std::str::Chars;
 
-use crate::Token;
+use crate::{Token, TokenType};
 
 #[derive(Clone)]
 pub struct Lexer<'a> {
@@ -46,39 +46,39 @@ impl<'a> Lexer<'a> {
                 } // Skip whitespace
                 '{' => {
                     self.advance()?;
-                    Some(Token::OpenBrace)
+                    Some(Token::new(TokenType::OpenBrace))
                 }
                 '}' => {
                     self.advance()?;
-                    Some(Token::CloseBrace)
+                    Some(Token::new(TokenType::CloseBrace))
                 }
                 '(' => {
                     self.advance()?;
-                    Some(Token::OpenParen)
+                    Some(Token::new(TokenType::OpenParen))
                 }
                 ')' => {
                     self.advance()?;
-                    Some(Token::CloseParen)
+                    Some(Token::new(TokenType::CloseParen))
                 }
                 ':' => {
                     self.advance()?;
                     if self.chars.peek() == Some(&'=') {
                         self.chars.next();
-                        return Some(Token::Declare);
+                        return Some(Token::new(TokenType::Declare));
                     }
-                    Some(Token::Colon)
+                    Some(Token::new(TokenType::Colon))
                 }
                 ';' | '\n' => {
                     self.advance()?;
-                    Some(Token::EndOfStatement)
+                    Some(Token::new(TokenType::EndOfStatement))
                 }
                 '=' => {
                     self.advance()?;
                     if self.chars.peek() == Some(&'=') {
                         self.chars.next();
-                        return Some(Token::EqualTo);
+                        return Some(Token::new(TokenType::EqualTo));
                     }
-                    Some(Token::Assign)
+                    Some(Token::new(TokenType::Assign))
                 }
                 '+' | '-' | '*' | '%' | '&' | '|' | '^' | '<' | '>' => {
                     self.advance()?;
@@ -97,26 +97,26 @@ impl<'a> Lexer<'a> {
         let token;
         if self.chars.peek() == Some(&'=') {
             match ch {
-                '+' => token = Some(Token::AddAssign),
-                '-' => token = Some(Token::SubAssign),
-                '*' => token = Some(Token::MultAssign),
-                '%' => token = Some(Token::ModAssign),
-                '&' => token = Some(Token::BitAndAssign),
-                '|' => token = Some(Token::BitOrAssign),
-                '^' => token = Some(Token::BitXorAssign),
+                '+' => token = Some(Token::new(TokenType::AddAssign)),
+                '-' => token = Some(Token::new(TokenType::SubAssign)),
+                '*' => token = Some(Token::new(TokenType::MultAssign)),
+                '%' => token = Some(Token::new(TokenType::ModAssign)),
+                '&' => token = Some(Token::new(TokenType::BitAndAssign)),
+                '|' => token = Some(Token::new(TokenType::BitOrAssign)),
+                '^' => token = Some(Token::new(TokenType::BitXorAssign)),
                 _ => token = None,
             }
         } else {
             match ch {
-                '+' => token = Some(Token::Plus),
-                '-' => token = Some(Token::Minus),
-                '*' => token = Some(Token::Star),
-                '%' => token = Some(Token::Mod),
-                '&' => token = Some(Token::BitAnd),
-                '|' => token = Some(Token::BitOr),
-                '^' => token = Some(Token::BitXor),
-                '<' => token = Some(Token::Less),
-                '>' => token = Some(Token::Greater),
+                '+' => token = Some(Token::new(TokenType::Plus)),
+                '-' => token = Some(Token::new(TokenType::Minus)),
+                '*' => token = Some(Token::new(TokenType::Star)),
+                '%' => token = Some(Token::new(TokenType::Mod)),
+                '&' => token = Some(Token::new(TokenType::BitAnd)),
+                '|' => token = Some(Token::new(TokenType::BitOr)),
+                '^' => token = Some(Token::new(TokenType::BitXor)),
+                '<' => token = Some(Token::new(TokenType::Less)),
+                '>' => token = Some(Token::new(TokenType::Greater)),
                 _ => token = None,
             }
         }
@@ -137,7 +137,7 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
-        Token::NumberLiteral(num)
+        Token::number_literal(num)
     }
 
     fn lex_ident(&mut self) -> Token {
@@ -152,20 +152,20 @@ impl<'a> Lexer<'a> {
             }
         }
         match ident.as_str() {
-            "if" => Token::If,
-            "is" => Token::Is,
-            "else" => Token::Else,
-            "loop" => Token::Loop,
-            "break" => Token::Break,
-            "fn" => Token::Fn,
-            "struct" => Token::Struct,
-            "sum" => Token::Sum,
-            "print" => Token::Print,
-            "use" => Token::Use,
-            "ret" => Token::Ret,
-            "true" => Token::True,
-            "false" => Token::False,
-            _ => Token::Ident(ident),
+            "if" => Token::new(TokenType::If),
+            "is" => Token::new(TokenType::Is),
+            "else" => Token::new(TokenType::Else),
+            "loop" => Token::new(TokenType::Loop),
+            "break" => Token::new(TokenType::Break),
+            "fn" => Token::new(TokenType::Fn),
+            "struct" => Token::new(TokenType::Struct),
+            "sum" => Token::new(TokenType::Sum),
+            "print" => Token::new(TokenType::Print),
+            "use" => Token::new(TokenType::Use),
+            "ret" => Token::new(TokenType::Ret),
+            "true" => Token::new(TokenType::True),
+            "false" => Token::new(TokenType::False),
+            _ => Token::new_ident(ident),
         }
     }
 
