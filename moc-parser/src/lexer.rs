@@ -86,6 +86,7 @@ impl<'a> Lexer<'a> {
                 }
                 '0'..='9' => return Some(self.lex_number()),
                 'a'..='z' | 'A'..='Z' | '_' => return Some(self.lex_ident()),
+                '\"' => return self.lex_string_literal(),
                 _ => None, // Ignore unknown characters for now
             };
             return token;
@@ -177,5 +178,22 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
+    }
+
+    fn lex_string_literal(&mut self) -> Option<Token> {
+        let mut literal = String::new();
+        self.advance();
+        let mut is_valid = false;
+        while let Some(&ch) = self.chars.peek() {
+            if ch != '\"' {
+                literal.push(ch);
+                self.advance();
+            } else {
+                is_valid = true;
+                self.advance();
+                break;
+            }
+        }
+        if is_valid { Some(Token::string_literal(literal)) } else { None }
     }
 }

@@ -132,13 +132,13 @@ impl<'a> Parser<'a> {
             if let Some(literal) = self.current_token.as_ref().and_then(|t| t.value.clone()) {
                 return Ok(Expr::StringLiteral(literal))
             }
-            unreachable!()
+            unreachable!() // we're checking if the token is a literal so this should never be reached
         }
         if self.matches(&[TokenType::NumberLiteral]) {
             if let Some(literal) = self.current_token.as_ref().and_then(|t| t.value.clone()) {
                 return Ok(Expr::NumberLiteral(literal))
             }
-            unreachable!()
+            unreachable!() // we're checking if the token is a literal so this should never be reached
         }
         if self.matches(&[TokenType::OpenParen]) {
             let expr = self.expression()?;
@@ -147,7 +147,7 @@ impl<'a> Parser<'a> {
         }
         ParseError::new("Expected an expression", &self.token_stream.peek().cloned()).wrap()
     }
-    /// checks if next token is one of the given tokens, then moves on to that token
+    /// checks if next token is of one of the given types, then moves on to that token
     fn matches(&mut self, tokens: &[TokenType]) -> bool {
         for token in tokens {
             if self.is_next_of_type(token) {
@@ -158,7 +158,7 @@ impl<'a> Parser<'a> {
         false
     }
 
-    // checks if the following token is of the type of the given token.
+    // checks if the following token is of the given type.
     fn is_next_of_type(&mut self, token_type: &TokenType) -> bool {
         if let Some(current_token) = self.peek() {
             if token_type == &current_token._type {

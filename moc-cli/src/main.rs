@@ -22,8 +22,8 @@ fn main() {
             file.read_to_string(&mut src).unwrap();
             let lexer = Lexer::new(&src);
             lexer.clone().for_each(|token| println!("{:?}", token));
-            let mut parser = parser::Parser::new(lexer);
-            println!("{:?}", parser.parse().unwrap());
+            //let mut parser = parser::Parser::new(lexer);
+            //println!("{:?}", parser.parse().unwrap());
         },
         Err(err) => {
             eprintln!("{}", err)
