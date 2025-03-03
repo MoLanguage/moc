@@ -1,27 +1,37 @@
 use std::iter::Peekable;
 use std::str::Chars;
 
-use crate::{Token, TokenLocation, TokenType};
+use crate::{CodeLocation, Token, TokenType};
 
 #[derive(Clone)]
 pub struct Lexer<'a> {
     chars: Peekable<Chars<'a>>,
-    location: TokenLocation,
+    location: CodeLocation,
 }
 
 impl<'a> Iterator for Lexer<'a> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.next_token()
+        self.next_token().ok()
     }
 }
+
+#[derive(Debug)]
+pub enum LexerError {
+    UnendingStringLiteral(CodeLocation),
+    InvalidCharacter,
+    UnknownEscapeCharacter,
+    UnknownToken,
+}
+
+type LexerResult = Result<Token, LexerError>;
 
 impl<'a> Lexer<'a> {
     pub fn new(input: &'a str) -> Self {
         Self {
             chars: input.chars().peekable(),
-            location: TokenLocation::default(),
+            location: CodeLocation::default(),
         }
     }
 
@@ -51,12 +61,12 @@ impl<'a> Lexer<'a> {
         Token::new(TokenType::LineBreak, self.location)
     }
 
-    pub fn next_token(&mut self) -> Option<Token> {
+    pub fn next_token(&mut self) -> Result<Token, LexerError> {
         while let Some(ch) = self.chars.peek() {
             let ch = *ch;
             let token = match ch {
                 '/' => {
-                    self.advance()?;
+                    self.advance();
                     if self.chars.peek() == Some(&'/') {
                         // two slashes means a comment
                         self.skip_comment();
@@ -65,93 +75,99 @@ impl<'a> Lexer<'a> {
                     self.lex_operator(ch) // if we have a single slash, it's a divide operator
                 }
                 ' ' | '\t' => {
-                    self.advance()?;
+                    self.advance();
                     continue;
                 } // Skip whitespace
-                '\r' => self.lex_crlf(),
-                '\n' => Some(self.lex_lf()),
+                '\r' => {
+                    if let Some(token) = self.lex_crlf() { 
+                        return Ok(token);
+                    } else {
+                        // maybe emit warning here if only single \r found
+                        continue;
+                    };
+                } 
+                '\n' => Ok(self.lex_lf()),
                 '{' => {
-                    self.advance()?;
-                    Some(Token::new(TokenType::OpenBrace, self.location))
+                    self.advance();
+                    Ok(Token::new(TokenType::OpenBrace, self.location))
                 }
                 '}' => {
-                    self.advance()?;
-                    Some(Token::new(TokenType::CloseBrace, self.location))
+                    self.advance();
+                    Ok(Token::new(TokenType::CloseBrace, self.location))
                 }
                 '(' => {
-                    self.advance()?;
-                    Some(Token::new(TokenType::OpenParen, self.location))
+                    self.advance();
+                    Ok(Token::new(TokenType::OpenParen, self.location))
                 }
                 ')' => {
-                    self.advance()?;
-                    Some(Token::new(TokenType::CloseParen, self.location))
+                    self.advance();
+                    Ok(Token::new(TokenType::CloseParen, self.location))
                 }
                 ':' => {
-                    self.advance()?;
+                    self.advance();
                     if self.chars.peek() == Some(&'=') {
-                        self.advance()?;
-                        return Some(Token::new(TokenType::Declare, self.location));
+                        self.advance();
+                        return Ok(Token::new(TokenType::Declare, self.location));
                     }
-                    Some(Token::new(TokenType::Colon, self.location))
+                    Ok(Token::new(TokenType::Colon, self.location))
                 }
                 ';' => {
-                    self.advance()?;
-                    Some(Token::new(TokenType::Semicolon, self.location))
+                    self.advance();
+                    Ok(Token::new(TokenType::Semicolon, self.location))
                 }
                 '=' => {
-                    self.advance()?;
+                    self.advance();
                     if self.chars.peek() == Some(&'=') {
-                        self.advance()?;
-                        return Some(Token::new(TokenType::EqualTo, self.location));
+                        self.advance();
+                        return Ok(Token::new(TokenType::EqualTo, self.location));
                     }
-                    Some(Token::new(TokenType::Assign, self.location))
+                    Ok(Token::new(TokenType::Assign, self.location))
                 }
-                '+' | '-' | '*' | '%' | '&' | '|' | '^' | '<' | '>' => {
-                    self.advance()?;
-                    self.lex_operator(ch)
-                }
-                '0'..='9' => return Some(self.lex_number()),
-                'a'..='z' | 'A'..='Z' | '_' => return Some(self.lex_ident()),
+                '+' | '-' | '*' | '%' | '&' | '|' | '^' | '<' | '>' => self.lex_operator(ch),
+                '0'..='9' => return Ok(self.lex_number()),
+                'a'..='z' | 'A'..='Z' | '_' => return Ok(self.lex_ident()),
                 '\"' => return self.lex_string_literal(),
-                _ => None, // Ignore unknown characters for now
+                _ => Err(LexerError::InvalidCharacter), // TODO: return proper LexerError
             };
             return token;
         }
-        None
+        Ok(Token::new(TokenType::EndOfFile, self.location))
     }
 
-    fn lex_operator(&mut self, ch: char) -> Option<Token> {
+    fn lex_operator(&mut self, ch: char) -> LexerResult {
+        self.advance();
         if self.chars.peek() == Some(&'=') {
             let token_type = match ch {
-                '+' => Some(TokenType::AddAssign),
-                '-' => Some(TokenType::SubAssign),
-                '*' => Some(TokenType::MultAssign),
-                '%' => Some(TokenType::ModAssign),
-                '&' => Some(TokenType::BitAndAssign),
-                '|' => Some(TokenType::BitOrAssign),
-                '^' => Some(TokenType::BitXorAssign),
-                _ => None,
+                '+' => TokenType::AddAssign,
+                '-' => TokenType::SubAssign,
+                '*' => TokenType::MultAssign,
+                '%' => TokenType::ModAssign,
+                '&' => TokenType::BitAndAssign,
+                '|' => TokenType::BitOrAssign,
+                '^' => TokenType::BitXorAssign,
+                '<' => TokenType::LessOrEqual,
+                '>' => TokenType::GreaterOrEqual,
+                _ => unreachable!(),
             };
-            if let Some(token_type) = token_type {
-                // is a 2 character operator
-                self.advance()?;
-                return Some(Token::new(token_type, self.location));
-            }
+
+            // is a 2 character operator
+            self.advance();
+            return Ok(Token::new(token_type, self.location));
         } else {
-            return match ch {
-                '+' => Some(Token::new(TokenType::Plus, self.location)),
-                '-' => Some(Token::new(TokenType::Minus, self.location)),
-                '*' => Some(Token::new(TokenType::Star, self.location)),
-                '%' => Some(Token::new(TokenType::Mod, self.location)),
-                '&' => Some(Token::new(TokenType::BitAnd, self.location)),
-                '|' => Some(Token::new(TokenType::BitOr, self.location)),
-                '^' => Some(Token::new(TokenType::BitXor, self.location)),
-                '<' => Some(Token::new(TokenType::Less, self.location)),
-                '>' => Some(Token::new(TokenType::Greater, self.location)),
-                _ => None,
+            let token_type = match ch {
+                '+' => TokenType::Plus,
+                '-' => TokenType::Minus,
+                '*' => TokenType::Star,
+                '%' => TokenType::Mod,
+                '&' => TokenType::BitAnd,
+                '|' => TokenType::BitOr,
+                '^' => TokenType::BitXor,
+                '<' => TokenType::Less,
+                '>' => TokenType::Greater,
+                _ => unreachable!(),
             };
+            return Ok(Token::new(token_type, self.location));
         }
-        None
     }
 
     fn lex_number(&mut self) -> Token {
@@ -209,25 +225,51 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    // still need to add escaping of special characters.
-    fn lex_string_literal(&mut self) -> Option<Token> {
-        let mut literal = String::new();
+    // still need to add escaping of special characters. could do that later tho.
+    fn lex_string_literal(&mut self) -> Result<Token, LexerError> {
         self.advance();
-        let mut is_valid = false;
+        let mut literal = String::new();
+        let mut ends_by_quote = false; // valid if string literal ends with another quote symbol "
         while let Some(&ch) = self.chars.peek() {
-            if ch != '\"' {
-                literal.push(ch);
-                self.advance();
-            } else {
-                is_valid = true;
-                self.advance();
-                break;
+            self.advance();
+            match ch {
+                '\\' => {
+                    self.handle_escape_character(&mut literal)?;
+                }
+                '\"' => {
+                    ends_by_quote = true;
+                    break;
+                }
+                _ => {
+                    literal.push(ch);
+                }
             }
         }
-        if is_valid {
-            Some(Token::string_literal(literal, self.location))
+        if ends_by_quote {
+            Ok(Token::string_literal(literal, self.location))
         } else {
-            None
+            Err(LexerError::UnendingStringLiteral(self.location))
         }
+    }
+
+    fn handle_escape_character(&mut self, literal: &mut String) -> Result<(), LexerError> {
+        if let Some(ch) = self.chars.peek() {
+            let replacement = match ch {
+                '\\' => Some('\\'),
+                '\"' => Some('\"'),
+                'r' => Some('\r'),
+                'n' => Some('\n'),
+                '0' => Some('\0'),
+                't' => Some('\t'),
+                '\'' => Some('\''),
+                _ => None, // replace with proper error
+            };
+            if let Some(replacement) = replacement {
+                self.advance();
+                literal.push(replacement);
+                return Ok(());
+            }
+        }
+        Err(LexerError::UnknownEscapeCharacter)
     }
 }

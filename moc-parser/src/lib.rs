@@ -5,16 +5,16 @@ pub mod parser;
 pub struct Token {
     pub _type: TokenType,
     value: Option<String>,
-    pub location: TokenLocation
+    pub location: CodeLocation
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct TokenLocation {
+pub struct CodeLocation {
     line: u32, 
     column: u32
 }
 
-impl Default for TokenLocation {
+impl Default for CodeLocation {
     fn default() -> Self {
         Self { line: 1, column: 1 }
     }
@@ -70,19 +70,20 @@ pub enum TokenType {
     BitAnd,
     BitOr,
     BitXor, // replace with proper function call statement
+    EndOfFile
 }
 
 impl Token {
-    fn string_literal(literal: String, location: TokenLocation) -> Self {
+    pub fn string_literal(literal: String, location: CodeLocation) -> Self {
         Self { _type: TokenType::StringLiteral, value: Some(literal.into()), location }
     }
-    fn new_ident(ident: String, location: TokenLocation) -> Self {
+    pub fn new_ident(ident: String, location: CodeLocation) -> Self {
         Self { _type: TokenType::Ident, value: Some(ident.into()), location }
     }
-    fn number_literal(literal: String, location: TokenLocation) -> Self {
+    pub fn number_literal(literal: String, location: CodeLocation) -> Self {
         Self { _type: TokenType::NumberLiteral, value: Some(literal.into()), location }
     }
-    fn new(_type: TokenType, location: TokenLocation) -> Self {
+    pub fn new(_type: TokenType, location: CodeLocation) -> Self {
         Self { _type, value: None, location }
     }
     pub fn value(&self) -> Option<&String> {
