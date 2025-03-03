@@ -128,13 +128,13 @@ impl<'a> Parser<'a> {
         if self.matches(&[TokenType::False]) {
             return Ok(Expr::BoolLiteral(false));
         }
-        if self.matches(&[TokenType::StringLiteral]) { // ugly lmao
+        if self.matches(&[TokenType::StringLiteral]) {
             if let Some(literal) = self.current_token.as_ref().and_then(|t| t.value.clone()) {
                 return Ok(Expr::StringLiteral(literal))
             }
             unreachable!()
         }
-        if self.matches(&[TokenType::NumberLiteral]) { // ugly lmao
+        if self.matches(&[TokenType::NumberLiteral]) {
             if let Some(literal) = self.current_token.as_ref().and_then(|t| t.value.clone()) {
                 return Ok(Expr::NumberLiteral(literal))
             }
