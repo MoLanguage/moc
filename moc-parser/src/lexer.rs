@@ -26,17 +26,18 @@ impl<'a> Lexer<'a> {
     }
 
     fn line_break(&mut self) {
-        self.location.column = 0;
+        self.location.column = 1;
         self.location.line += 1;
     }
 
     fn advance(&mut self) -> Option<char> {
-        if self.chars.peek() == Some(&'\r') { // windows CRLF
+        let next = self.chars.peek();
+        if next == Some(&'\r') { // windows CRLF
             self.chars.next();
             if self.chars.peek() == Some(&'\n') {
                 self.line_break();
             }
-        } else if self.chars.peek() == Some(&'\n') { // linux and mac LF
+        } else if next == Some(&'\n') { // linux and mac LF
             self.line_break();
         } else {
             self.location.column += 1; // no line break
@@ -112,37 +113,37 @@ impl<'a> Lexer<'a> {
     }
 
     fn lex_operator(&mut self, ch: char) -> Option<Token> {
-        let token;
         if self.chars.peek() == Some(&'=') {
-            match ch {
-                '+' => token = Some(Token::new(TokenType::AddAssign, self.location)),
-                '-' => token = Some(Token::new(TokenType::SubAssign, self.location)),
-                '*' => token = Some(Token::new(TokenType::MultAssign, self.location)),
-                '%' => token = Some(Token::new(TokenType::ModAssign, self.location)),
-                '&' => token = Some(Token::new(TokenType::BitAndAssign, self.location)),
-                '|' => token = Some(Token::new(TokenType::BitOrAssign, self.location)),
-                '^' => token = Some(Token::new(TokenType::BitXorAssign, self.location)),
-                _ => token = None,
-            }
-            if token.is_some() {
+            let token_type = match ch {
+                '+' => Some(TokenType::AddAssign),
+                '-' => Some(TokenType::SubAssign),
+                '*' => Some(TokenType::MultAssign),
+                '%' => Some(TokenType::ModAssign),
+                '&' => Some(TokenType::BitAndAssign),
+                '|' => Some(TokenType::BitOrAssign),
+                '^' => Some(TokenType::BitXorAssign),
+                _ => None,
+            };
+            if let Some(token_type) = token_type {
                 // is a 2 character operator
                 self.advance()?;
+                return Some(Token::new(token_type, self.location))
             }
         } else {
-            match ch {
-                '+' => token = Some(Token::new(TokenType::Plus, self.location)),
-                '-' => token = Some(Token::new(TokenType::Minus, self.location)),
-                '*' => token = Some(Token::new(TokenType::Star, self.location)),
-                '%' => token = Some(Token::new(TokenType::Mod, self.location)),
-                '&' => token = Some(Token::new(TokenType::BitAnd, self.location)),
-                '|' => token = Some(Token::new(TokenType::BitOr, self.location)),
-                '^' => token = Some(Token::new(TokenType::BitXor, self.location)),
-                '<' => token = Some(Token::new(TokenType::Less, self.location)),
-                '>' => token = Some(Token::new(TokenType::Greater, self.location)),
-                _ => token = None,
+            return match ch {
+                '+' => Some(Token::new(TokenType::Plus, self.location)),
+                '-' => Some(Token::new(TokenType::Minus, self.location)),
+                '*' => Some(Token::new(TokenType::Star, self.location)),
+                '%' => Some(Token::new(TokenType::Mod, self.location)),
+                '&' => Some(Token::new(TokenType::BitAnd, self.location)),
+                '|' => Some(Token::new(TokenType::BitOr, self.location)),
+                '^' => Some(Token::new(TokenType::BitXor, self.location)),
+                '<' => Some(Token::new(TokenType::Less, self.location)),
+                '>' => Some(Token::new(TokenType::Greater, self.location)),
+                _ => None,
             }
         }
-        return token;
+        None
     }
 
     fn lex_number(&mut self) -> Token {

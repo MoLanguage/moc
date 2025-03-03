@@ -8,10 +8,16 @@ pub struct Token {
     pub location: TokenLocation
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 pub struct TokenLocation {
     line: u32, 
     column: u32
+}
+
+impl Default for TokenLocation {
+    fn default() -> Self {
+        Self { line: 1, column: 1 }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
