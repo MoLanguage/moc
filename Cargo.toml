@@ -1,7 +1,4 @@
 [workspace]
-members = [
-    "moc-cranelift",
-    "moc-cli"
-, "moc-parser"]
+members = ["moc-cranelift", "moc-cli", "moc-parser"]
 
 resolver = "2"
