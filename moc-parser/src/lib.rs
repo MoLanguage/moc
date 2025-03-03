@@ -5,6 +5,13 @@ pub mod parser;
 pub struct Token {
     pub _type: TokenType,
     value: Option<String>,
+    pub location: TokenLocation
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TokenLocation {
+    line: u32, 
+    column: u32
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,17 +66,17 @@ pub enum TokenType {
 }
 
 impl Token {
-    fn string_literal(literal: String) -> Self {
-        Self { _type: TokenType::StringLiteral, value: Some(literal.into()) }
+    fn string_literal(literal: String, location: TokenLocation) -> Self {
+        Self { _type: TokenType::StringLiteral, value: Some(literal.into()), location }
     }
-    fn new_ident(ident: String) -> Self {
-        Self { _type: TokenType::Ident, value: Some(ident.into()) }
+    fn new_ident(ident: String, location: TokenLocation) -> Self {
+        Self { _type: TokenType::Ident, value: Some(ident.into()), location }
     }
-    fn number_literal(literal: String) -> Self {
-        Self { _type: TokenType::NumberLiteral, value: Some(literal.into()) }
+    fn number_literal(literal: String, location: TokenLocation) -> Self {
+        Self { _type: TokenType::NumberLiteral, value: Some(literal.into()), location }
     }
-    fn new(_type: TokenType) -> Self {
-        Self { _type, value: None }
+    fn new(_type: TokenType, location: TokenLocation) -> Self {
+        Self { _type, value: None, location }
     }
     pub fn value(&self) -> Option<&String> {
         self.value.as_ref()

@@ -1,11 +1,12 @@
 use std::iter::Peekable;
 use std::str::Chars;
 
-use crate::{Token, TokenType};
+use crate::{Token, TokenLocation, TokenType};
 
 #[derive(Clone)]
 pub struct Lexer<'a> {
     chars: Peekable<Chars<'a>>,
+    location: TokenLocation
 }
 
 impl<'a> Iterator for Lexer<'a> {
@@ -20,10 +21,26 @@ impl<'a> Lexer<'a> {
     pub fn new(input: &'a str) -> Self {
         Self {
             chars: input.chars().peekable(),
+            location: TokenLocation::default()
         }
     }
 
+    fn line_break(&mut self) {
+        self.location.column = 0;
+        self.location.line += 1;
+    }
+
     fn advance(&mut self) -> Option<char> {
+        if self.chars.peek() == Some(&'\r') { // windows CRLF
+            self.chars.next();
+            if self.chars.peek() == Some(&'\n') {
+                self.line_break();
+            }
+        } else if self.chars.peek() == Some(&'\n') { // linux and mac LF
+            self.line_break();
+        } else {
+            self.location.column += 1; // no line break
+        }
         self.chars.next()
     }
 
@@ -46,39 +63,39 @@ impl<'a> Lexer<'a> {
                 } // Skip whitespace
                 '{' => {
                     self.advance()?;
-                    Some(Token::new(TokenType::OpenBrace))
+                    Some(Token::new(TokenType::OpenBrace, self.location))
                 }
                 '}' => {
                     self.advance()?;
-                    Some(Token::new(TokenType::CloseBrace))
+                    Some(Token::new(TokenType::CloseBrace, self.location))
                 }
                 '(' => {
                     self.advance()?;
-                    Some(Token::new(TokenType::OpenParen))
+                    Some(Token::new(TokenType::OpenParen, self.location))
                 }
                 ')' => {
                     self.advance()?;
-                    Some(Token::new(TokenType::CloseParen))
+                    Some(Token::new(TokenType::CloseParen, self.location))
                 }
                 ':' => {
                     self.advance()?;
                     if self.chars.peek() == Some(&'=') {
-                        self.chars.next();
-                        return Some(Token::new(TokenType::Declare));
+                        self.advance()?;
+                        return Some(Token::new(TokenType::Declare, self.location));
                     }
-                    Some(Token::new(TokenType::Colon))
+                    Some(Token::new(TokenType::Colon, self.location))
                 }
                 ';' | '\n' => {
                     self.advance()?;
-                    Some(Token::new(TokenType::EndOfStatement))
+                    Some(Token::new(TokenType::EndOfStatement, self.location))
                 }
                 '=' => {
                     self.advance()?;
                     if self.chars.peek() == Some(&'=') {
-                        self.chars.next();
-                        return Some(Token::new(TokenType::EqualTo));
+                        self.advance()?;
+                        return Some(Token::new(TokenType::EqualTo, self.location));
                     }
-                    Some(Token::new(TokenType::Assign))
+                    Some(Token::new(TokenType::Assign, self.location))
                 }
                 '+' | '-' | '*' | '%' | '&' | '|' | '^' | '<' | '>' => {
                     self.advance()?;
@@ -98,26 +115,26 @@ impl<'a> Lexer<'a> {
         let token;
         if self.chars.peek() == Some(&'=') {
             match ch {
-                '+' => token = Some(Token::new(TokenType::AddAssign)),
-                '-' => token = Some(Token::new(TokenType::SubAssign)),
-                '*' => token = Some(Token::new(TokenType::MultAssign)),
-                '%' => token = Some(Token::new(TokenType::ModAssign)),
-                '&' => token = Some(Token::new(TokenType::BitAndAssign)),
-                '|' => token = Some(Token::new(TokenType::BitOrAssign)),
-                '^' => token = Some(Token::new(TokenType::BitXorAssign)),
+                '+' => token = Some(Token::new(TokenType::AddAssign, self.location)),
+                '-' => token = Some(Token::new(TokenType::SubAssign, self.location)),
+                '*' => token = Some(Token::new(TokenType::MultAssign, self.location)),
+                '%' => token = Some(Token::new(TokenType::ModAssign, self.location)),
+                '&' => token = Some(Token::new(TokenType::BitAndAssign, self.location)),
+                '|' => token = Some(Token::new(TokenType::BitOrAssign, self.location)),
+                '^' => token = Some(Token::new(TokenType::BitXorAssign, self.location)),
                 _ => token = None,
             }
         } else {
             match ch {
-                '+' => token = Some(Token::new(TokenType::Plus)),
-                '-' => token = Some(Token::new(TokenType::Minus)),
-                '*' => token = Some(Token::new(TokenType::Star)),
-                '%' => token = Some(Token::new(TokenType::Mod)),
-                '&' => token = Some(Token::new(TokenType::BitAnd)),
-                '|' => token = Some(Token::new(TokenType::BitOr)),
-                '^' => token = Some(Token::new(TokenType::BitXor)),
-                '<' => token = Some(Token::new(TokenType::Less)),
-                '>' => token = Some(Token::new(TokenType::Greater)),
+                '+' => token = Some(Token::new(TokenType::Plus, self.location)),
+                '-' => token = Some(Token::new(TokenType::Minus, self.location)),
+                '*' => token = Some(Token::new(TokenType::Star, self.location)),
+                '%' => token = Some(Token::new(TokenType::Mod, self.location)),
+                '&' => token = Some(Token::new(TokenType::BitAnd, self.location)),
+                '|' => token = Some(Token::new(TokenType::BitOr, self.location)),
+                '^' => token = Some(Token::new(TokenType::BitXor, self.location)),
+                '<' => token = Some(Token::new(TokenType::Less, self.location)),
+                '>' => token = Some(Token::new(TokenType::Greater, self.location)),
                 _ => token = None,
             }
         }
@@ -130,15 +147,15 @@ impl<'a> Lexer<'a> {
         while let Some(&ch) = self.chars.peek() {
             if ch.is_digit(10) {
                 num.push(ch);
-                self.chars.next();
+                self.advance();
             } else if ch == '_' {
-                self.chars.next();
+                self.advance();
                 continue;
             } else {
                 break;
             }
         }
-        Token::number_literal(num)
+        Token::number_literal(num, self.location)
     }
 
     fn lex_ident(&mut self) -> Token {
@@ -147,39 +164,39 @@ impl<'a> Lexer<'a> {
         while let Some(&ch) = self.chars.peek() {
             if ch.is_alphanumeric() || ch == '_' {
                 ident.push(ch);
-                self.chars.next();
+                self.advance();
             } else {
                 break;
             }
         }
         match ident.as_str() {
-            "if" => Token::new(TokenType::If),
-            "is" => Token::new(TokenType::Is),
-            "else" => Token::new(TokenType::Else),
-            "loop" => Token::new(TokenType::Loop),
-            "break" => Token::new(TokenType::Break),
-            "fn" => Token::new(TokenType::Fn),
-            "struct" => Token::new(TokenType::Struct),
-            "sum" => Token::new(TokenType::Sum),
-            "print" => Token::new(TokenType::Print),
-            "use" => Token::new(TokenType::Use),
-            "ret" => Token::new(TokenType::Ret),
-            "true" => Token::new(TokenType::True),
-            "false" => Token::new(TokenType::False),
-            _ => Token::new_ident(ident),
+            "if" => Token::new(TokenType::If, self.location),
+            "is" => Token::new(TokenType::Is, self.location),
+            "else" => Token::new(TokenType::Else, self.location),
+            "loop" => Token::new(TokenType::Loop, self.location),
+            "break" => Token::new(TokenType::Break, self.location),
+            "fn" => Token::new(TokenType::Fn, self.location),
+            "struct" => Token::new(TokenType::Struct, self.location),
+            "sum" => Token::new(TokenType::Sum, self.location),
+            "print" => Token::new(TokenType::Print, self.location),
+            "use" => Token::new(TokenType::Use, self.location),
+            "ret" => Token::new(TokenType::Ret, self.location),
+            "true" => Token::new(TokenType::True, self.location),
+            "false" => Token::new(TokenType::False, self.location),
+            _ => Token::new_ident(ident, self.location),
         }
     }
 
     fn skip_comment(&mut self) {
         while let Some(&ch) = self.chars.peek() {
-            if ch != '\n' {
-                self.chars.next();
-            } else {
+            self.advance();
+            if ch == '\r' || ch == '\n' {
                 break;
             }
         }
     }
 
+    // still need to add escaping of special characters.
     fn lex_string_literal(&mut self) -> Option<Token> {
         let mut literal = String::new();
         self.advance();
@@ -194,6 +211,6 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
-        if is_valid { Some(Token::string_literal(literal)) } else { None }
+        if is_valid { Some(Token::string_literal(literal, self.location)) } else { None }
     }
 }
