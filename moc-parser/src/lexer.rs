@@ -124,6 +124,10 @@ impl<'a> Lexer<'a> {
                 '^' => token = Some(Token::new(TokenType::BitXorAssign, self.location)),
                 _ => token = None,
             }
+            if token.is_some() {
+                // is a 2 character operator
+                self.advance()?;
+            }
         } else {
             match ch {
                 '+' => token = Some(Token::new(TokenType::Plus, self.location)),
