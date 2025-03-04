@@ -22,60 +22,61 @@ impl Default for CodeLocation {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenType {
-    Ident,
-    NumberLiteral,
-    StringLiteral,
-    True,
-    False,
-    Excl,
-    At,
-    Comma,
-    Dot,
-    For,
-    In,
-    NotEqualTo,
-    EqualTo,
-    Greater,
-    GreaterOrEqual,
-    Less,
-    LessOrEqual,
-    Plus,
-    Minus,
-    Slash,
-    Star,
-    Semicolon,
-    Mod,
     AddAssign,
-    SubAssign,
-    DivAssign,
-    MultAssign,
-    ModAssign,
-    OpenBrace,
-    CloseBrace,
-    OpenParen,
-    CloseParen,
-    Colon,
-    LineBreak, // encompassing CRLF and LF in one token.
-    Declare,
     Assign,
-    Struct,
-    Sum,
-    Use,
-    Ret,
-    If,
-    Is,
-    Else,
-    Loop,
-    Break,
-    Fn,
-    Print,
+    At,
     BitAndAssign,
     BitOrAssign,
     BitXorAssign,
     BitAnd,
     BitOr,
     BitXor, // replace with proper function call statement
-    EndOfFile
+    Break,
+    CloseBrace,
+    CloseParen,
+    Colon,
+    Comma,
+    Declare,
+    Defer,
+    DivAssign,
+    Dot,
+    EqualTo,
+    Excl,
+    Else,
+    EndOfFile,
+    False,
+    Fn,
+    For,
+    Greater,
+    GreaterOrEqual,
+    Ident,
+    If,
+    In,
+    Is,
+    Less,
+    LessOrEqual,
+    LineBreak, // encompassing CRLF and LF in one token.
+    Loop,
+    Minus,
+    Mod,
+    ModAssign,
+    MultAssign,
+    NotEqualTo,
+    NumberLiteral,
+    OpenBrace,
+    OpenParen,
+    Plus,
+    Print,
+    Ret,
+    Semicolon,
+    Slash,
+    StringLiteral,
+    Star,
+    Struct,
+    SubAssign,
+    Sum,
+    True,
+    Use,
 }
 
 impl Token {
@@ -99,29 +100,29 @@ impl Token {
 #[derive(Debug)]
 pub enum Expr {
     Binary(Box<Expr>, Token, Box<Expr>),
-    Unary(Token, Box<Expr>), // Operator followed by another expr
-    Grouping(Box<Expr>),
-    NumberLiteral(String),
-    StringLiteral(String),
     BoolLiteral(bool),
-    VarDecl(String, Box<Expr>),
+    Break,
+    FnDef(String, Vec<String>, Vec<Expr>),
+    Grouping(Box<Expr>),
     Ident(String),
     If(Box<Expr>, Vec<Expr>, Option<Vec<Expr>>), // boolean expr, if-case, optional else-case
     Loop(Vec<Expr>),                             // simple infinite loop
-    Break,
-    FnDef(String, Vec<String>, Vec<Expr>),
+    NumberLiteral(String),
     Print(Box<Expr>),
+    StringLiteral(String),
+    Unary(Token, Box<Expr>), // Operator followed by another expr
     Use(String, Option<String>), // module name, optional second string for module renaming
+    VarDecl(String, Box<Expr>),
 }
 
 impl Expr {
     pub fn binary(left: Self, operator: Token, right: Self) -> Self {
         Self::Binary(Box::new(left), operator, Box::new(right))
     }
-    pub fn unary(operator: Token, right: Self) -> Self {
-        Self::Unary(operator, Box::new(right))
-    }
     pub fn grouping(expr: Self) -> Self {
         Self::Grouping(Box::new(expr))
+    }
+    pub fn unary(operator: Token, right: Self) -> Self {
+        Self::Unary(operator, Box::new(right))
     }
 }

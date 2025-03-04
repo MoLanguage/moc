@@ -217,21 +217,22 @@ impl<'a> Lexer<'a> {
             }
         }
         match ident.as_str() {
-            "if" => Token::new(TokenType::If, self.location),
-            "is" => Token::new(TokenType::Is, self.location),
-            "else" => Token::new(TokenType::Else, self.location),
-            "loop" => Token::new(TokenType::Loop, self.location),
-            "for" => Token::new(TokenType::For, self.location),
-            "in" => Token::new(TokenType::In, self.location),
             "break" => Token::new(TokenType::Break, self.location),
+            "defer" => Token::new(TokenType::Defer, self.location),
+            "else" => Token::new(TokenType::Else, self.location),
+            "false" => Token::new(TokenType::False, self.location),
             "fn" => Token::new(TokenType::Fn, self.location),
+            "for" => Token::new(TokenType::For, self.location),
+            "if" => Token::new(TokenType::If, self.location),
+            "in" => Token::new(TokenType::In, self.location),
+            "is" => Token::new(TokenType::Is, self.location),
+            "loop" => Token::new(TokenType::Loop, self.location),
+            "print" => Token::new(TokenType::Print, self.location),
+            "ret" => Token::new(TokenType::Ret, self.location),
             "struct" => Token::new(TokenType::Struct, self.location),
             "sum" => Token::new(TokenType::Sum, self.location),
-            "print" => Token::new(TokenType::Print, self.location),
-            "use" => Token::new(TokenType::Use, self.location),
-            "ret" => Token::new(TokenType::Ret, self.location),
             "true" => Token::new(TokenType::True, self.location),
-            "false" => Token::new(TokenType::False, self.location),
+            "use" => Token::new(TokenType::Use, self.location),
             _ => Token::new_ident(ident, self.location),
         }
     }
