@@ -5,7 +5,7 @@ pub mod parser;
 
 #[derive(Debug, Clone)]
 pub struct Token {
-    pub _type: TokenType,
+    pub r#type: TokenType,
     value: Option<String>,
     pub location: CodeLocation,
 }
@@ -84,28 +84,28 @@ pub enum TokenType {
 impl Token {
     pub fn string_literal(literal: String, location: CodeLocation) -> Self {
         Self {
-            _type: TokenType::StringLiteral,
+            r#type: TokenType::StringLiteral,
             value: Some(literal.into()),
             location,
         }
     }
     pub fn new_ident(ident: String, location: CodeLocation) -> Self {
         Self {
-            _type: TokenType::Ident,
+            r#type: TokenType::Ident,
             value: Some(ident.into()),
             location,
         }
     }
     pub fn number_literal(literal: String, location: CodeLocation) -> Self {
         Self {
-            _type: TokenType::NumberLiteral,
+            r#type: TokenType::NumberLiteral,
             value: Some(literal.into()),
             location,
         }
     }
     pub fn new(_type: TokenType, location: CodeLocation) -> Self {
         Self {
-            _type,
+            r#type: _type,
             value: None,
             location,
         }
@@ -113,64 +113,89 @@ impl Token {
     pub fn value(&self) -> Option<&String> {
         self.value.as_ref()
     }
+
+    /// # Panics
+    /// Panics if no value is present
+    pub fn expect_value(&self) -> String {
+        self.value.as_ref().expect("Expected value").clone()
+    }
 }
 
 #[derive(Debug)]
-pub enum ASTNode {
-    // Stmt
-    Print(Box<ASTNode>), // probably dont wanna have this as inbuilt function
-    VarDecl(String, Box<ASTNode>),
-    Break,
-
+pub enum Expr {
     // Expressions
-    Binary(Box<ASTNode>, Token, Box<ASTNode>),
+    Binary {
+        left_expr: Box<Expr>,
+        operator: Token,
+        right_expr: Box<Expr>,
+    },
     BoolLiteral(bool),
-    Grouping(Box<ASTNode>),
+    Grouping(Box<Expr>),
     VariableIdent(String),
-    If(Box<ASTNode>, Vec<ASTNode>, Option<Vec<ASTNode>>), // boolean expr, if-case, optional else-case
-    Loop(Vec<ASTNode>),                                   // simple infinite loop
+
+    Loop(Vec<Expr>), // simple infinite loop
     NumberLiteral(String),
 
     StringLiteral(String),
-    Unary(Token, Box<ASTNode>), // Operator followed by another expr
+    Unary(Token, Box<Expr>), // Operator followed by another expr
+    //IfIs
+    EndOfFile,
+}
 
-    // Items
+pub struct CodeBlock {
+    pub stmts: Vec<Stmt>,
+}
+
+pub enum Stmt {
+    Print(Box<Expr>), // probably dont wanna have this as inbuilt function
+    VarDecl {
+        ident: String,
+        value: Box<Expr>,
+    },
+    Break,
     UseDecl {
         module_ident: String,
         module_rename: Option<String>,
     },
     FnDecl {
         ident: String,
-        body: Vec<ASTNode>,
+        params: Vec<TypedVar>,
+        return_type: Option<String>,
+        body: CodeBlock,
     },
+    If {
+        condition: Box<Expr>,
+        if_block: Vec<Expr>,
+        else_block: Option<Vec<Expr>>,
+    }, // boolean expr, if-case, optional else-case
+    Ret(Expr), // return statement
     StructDecl {
         ident: String,
-        body: Vec<StructFieldDecl>,
-    },
-
-    EndOfFile,
-}
-
-#[derive(Debug)]
-enum DataType {
-    Int32,
-    Flt32,
-    String,
-    StructType {
-        ident: String,
-        body: Vec<StructFieldDecl>,
+        body: Vec<TypedVar>,
     },
 }
 
 #[derive(Debug)]
-pub struct StructFieldDecl {
-    ident: String,
-    data_type: DataType,
+pub struct TypedVar {
+    /// the type identifier
+    type_ident: String,
+    /// the identifier of the actual variable} 
+    ident: String, 
 }
 
-impl ASTNode {
+impl TypedVar {
+    fn new(data_type: String, ident: String) -> Self {
+        Self { type_ident: data_type, ident }
+    }
+}
+
+impl Expr {
     pub fn binary(left: Self, operator: Token, right: Self) -> Self {
-        Self::Binary(Box::new(left), operator, Box::new(right))
+        Self::Binary {
+            left_expr: Box::new(left),
+            operator,
+            right_expr: Box::new(right),
+        }
     }
     pub fn grouping(expr: Self) -> Self {
         Self::Grouping(Box::new(expr))
@@ -191,59 +216,63 @@ impl ASTNode {
         let depth = depth + 1;
         result.push_str(&format!("{}{}", "\n", INDENT.repeat(depth)));
         match self {
-            ASTNode::Print(astnode) => {
+            /* Expr::Print(astnode) => {
                 result.push_str("Print");
                 astnode.print_inner(depth, result);
             }
-            ASTNode::VarDecl(ident, astnode) => {
+            Expr::VarDecl(ident, astnode) => {
                 result.push_str(&format!("VarDecl \"{}\"", ident));
                 astnode.print_inner(depth, result);
             }
-            ASTNode::Break => {
+            Expr::Break => {
                 result.push_str("Break");
+            } */
+            Expr::Binary {
+                left_expr,
+                operator,
+                right_expr,
+            } => {
+                result.push_str(&format!("Binary: {:?}", operator.r#type));
+                left_expr.print_inner(depth, result);
+                right_expr.print_inner(depth, result);
             }
-            ASTNode::Binary(astnode, op, astnode1) => {
-                result.push_str(&format!("Binary: {:?}", op._type));
-                astnode.print_inner(depth, result);
-                astnode1.print_inner(depth, result);
-            }
-            ASTNode::BoolLiteral(bool) => result.push_str(&bool.to_string()),
-            ASTNode::Grouping(astnode) => {
+            Expr::BoolLiteral(bool) => result.push_str(&bool.to_string()),
+            Expr::Grouping(astnode) => {
                 result.push_str("Grouping: ");
                 astnode.print_inner(depth, result);
             }
-            ASTNode::VariableIdent(ident) => {
+            Expr::VariableIdent(ident) => {
                 result.push_str(&format!("VariableIdent: \"{}\"", ident));
             }
-            ASTNode::If(bool_expr, if_case, else_case) => {
+            /* Expr::If { condition, if_block, else_block } => {
                 result.push_str("If: ");
-                bool_expr.print_inner(depth, result);
-                for if_case_stmt in if_case {
-                    if_case_stmt.print_inner(depth, result);
+                condition.print_inner(depth, result);
+                for if_block_stmt in if_block {
+                    if_block_stmt.print_inner(depth, result);
                 }
-                if let Some(else_case) = else_case {
-                    for else_case_stmt in else_case {
-                        else_case_stmt.print_inner(depth, result);
+                if let Some(else_block) = else_block {
+                    for else_block_stmt in else_block {
+                        else_block_stmt.print_inner(depth, result);
                     }
                 }
-            }
-            ASTNode::Loop(astnodes) => {
+            } */
+            Expr::Loop(astnodes) => {
                 result.push_str("Loop");
                 for stmt in astnodes {
                     stmt.print_inner(depth, result);
                 }
             }
-            ASTNode::NumberLiteral(num) => {
+            Expr::NumberLiteral(num) => {
                 result.push_str(&format!("NumberLiteral: {}", num));
             }
-            ASTNode::StringLiteral(str) => {
+            Expr::StringLiteral(str) => {
                 result.push_str(&format!("StringLiteral: {}", str));
             }
-            ASTNode::Unary(op, astnode) => {
+            Expr::Unary(op, astnode) => {
                 result.push_str(&format!("Unary: {:?}", op));
                 astnode.print_inner(depth, result);
             }
-            ASTNode::UseDecl {
+            /* Expr::UseDecl {
                 module_ident,
                 module_rename,
             } => {
@@ -252,13 +281,13 @@ impl ASTNode {
                     result.push_str(&format!(" {}", mod_rename));
                 }
             }
-            ASTNode::FnDecl { ident, body } => {
+            Expr::FnDecl { ident, body } => {
                 result.push_str(&format!("FnDecl: {}", ident));
                 for stmt in body {
                     stmt.print_inner(depth, result);
                 }
             }
-            ASTNode::StructDecl { ident, body } => {
+            Expr::StructDecl { ident, body } => {
                 result.push_str(&format!("StructDecl: {}", ident));
                 for field_decl in body {
                     result.push_str(&format!(
@@ -266,15 +295,15 @@ impl ASTNode {
                         field_decl.data_type, field_decl.ident
                     ));
                 }
-            }
-            ASTNode::EndOfFile => {
+            } */
+            Expr::EndOfFile => {
                 result.push_str("EOF");
             }
         }
     }
 }
 
-impl Display for ASTNode {
+impl Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.print())
     }

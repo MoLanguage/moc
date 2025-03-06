@@ -1,7 +1,7 @@
 use std::{fs::File, io::Read};
 
 use clap::Parser;
-use moc_parser::{ASTNode, CodeLocation, Token, TokenType, lexer::Lexer, parser};
+use moc_parser::{Expr, CodeLocation, Token, TokenType, lexer::Lexer, parser};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -25,7 +25,7 @@ fn main() {
                 match token {
                     Ok(token) => {
                         println!("{:?}", token);
-                        if token._type == TokenType::EndOfFile {
+                        if token.r#type == TokenType::EndOfFile {
                             break;
                         }
                     }
@@ -38,7 +38,7 @@ fn main() {
 
             let mut parser = parser::Parser::new(lexer2);
             let ast = parser.parse().unwrap();
-            println!("{}", ast);
+            //println!("{}", ast);
         }
         Err(err) => {
             eprintln!("{}", err)

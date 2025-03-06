@@ -1,6 +1,6 @@
 use std::iter::Peekable;
 
-use crate::{ASTNode, Token, TokenType, lexer::Lexer};
+use crate::{CodeBlock, Expr, Stmt, Token, TokenType, TypedVar, lexer::Lexer};
 
 #[derive(Debug)]
 pub struct ParseError {
@@ -9,10 +9,10 @@ pub struct ParseError {
 }
 
 impl ParseError {
-    fn new(msg: &str, last_token: &Option<Token>) -> Self {
+    fn new(msg: &str, last_token: Option<&Token>) -> Self {
         Self {
             msg: msg.into(),
-            last_token: last_token.clone(),
+            last_token: last_token.and_then(|t| Some(t.clone())),
         }
     }
 
@@ -21,10 +21,13 @@ impl ParseError {
     }
 }
 
-pub type ParseResult = Result<ASTNode, ParseError>;
-pub struct Parser<'a> { 
+pub type ParseResult = Result<Vec<Stmt>, ParseError>;
+
+pub type ExprParseResult = Result<Expr, ParseError>;
+pub struct Parser<'a> {
     token_stream: Peekable<Lexer<'a>>,
     current_token: Option<Token>,
+    stmts: Vec<Stmt>,
 }
 
 impl<'a> Parser<'a> {
@@ -32,6 +35,7 @@ impl<'a> Parser<'a> {
         let parser = Self {
             token_stream: lexer.peekable(),
             current_token: None,
+            stmts: Vec::new(),
         };
         parser
     }
@@ -45,7 +49,7 @@ impl<'a> Parser<'a> {
 
     fn advance(&mut self) {
         if let Some(token) = self.token_stream.peek() {
-            if token._type != TokenType::EndOfFile {
+            if token.r#type != TokenType::EndOfFile {
                 self.current_token = self.token_stream.next();
                 //dbg!(&self.current_token);
             }
@@ -56,69 +60,142 @@ impl<'a> Parser<'a> {
         self.token_stream.peek()
     }
 
-    pub fn parse(&mut self) -> ParseResult {
-        self.comparison()
+    pub fn parse(mut self) -> ParseResult {
+        let borrowed = &mut self;
+        borrowed.parse_top_level_stmts()?;
+        Ok(self.stmts)
     }
 
-    pub fn parse_item(&mut self) -> ParseResult {
-        todo!()
+    /// Parses the top level statements that are in a .mo code file also called "Items".
+    fn parse_top_level_stmts(&mut self) -> Result<(), ParseError> {
+        while let Some(token) = self.peek() {
+            match token.r#type {
+                TokenType::Use => {
+                    self.parse_use_stmt()?;
+                }
+                TokenType::Struct => {
+                    self.parse_struct_decl()?;
+                }
+                TokenType::Fn => {
+                    self.parse_fn_decl()?;
+                }
+                _ => return Err(ParseError::new("Unexpected token", Some(token))),
+            }
+        }
+        Ok(())
     }
 
     // use io | use io "foo"
-    fn use_stmt(&mut self) -> ParseResult {
-        if self.matches(TokenType::Use) {
-            self.consume(TokenType::Ident, "Expected module identifier")?;
-            //let identifier = self.current_token.as_ref().and_then(|t| t.value()).unwrap().clone();
-            let identifier = self.current_token().value.unwrap();
-            if self.matches(TokenType::StringLiteral) {
-                return Ok(ASTNode::UseDecl {
-                    module_ident: identifier,
-                    module_rename: Some(self.current_token().value().unwrap().clone()),
-                });
-            } else {
-                return Ok(ASTNode::UseDecl {
-                    module_ident: identifier,
-                    module_rename: None,
-                });
-            }
+    fn parse_use_stmt(&mut self) -> Result<(), ParseError> {
+        self.advance();
+        self.try_consume_token(TokenType::Ident, "Expected module identifier")?;
+        //let identifier = self.current_token.as_ref().and_then(|t| t.value()).unwrap().clone();
+        let identifier = self.current_token().expect_value();
+        let stmt;
+        if self.matches(TokenType::StringLiteral) {
+            stmt = Stmt::UseDecl {
+                module_ident: identifier,
+                module_rename: Some(self.current_token().expect_value()),
+            };
         } else {
-            self.fn_decl()
+            stmt = Stmt::UseDecl {
+                module_ident: identifier,
+                module_rename: None,
+            };
         }
+        self.stmts.push(stmt);
+
+        Ok(())
     }
 
-    fn fn_decl(&mut self) -> ParseResult {
+    fn parse_fn_decl(&mut self) -> Result<(), ParseError> {
         if self.matches(TokenType::Fn) {
-            todo!()
+            self.try_consume_token(TokenType::Ident, "Expected identifier")?;
+            let fn_ident = self.current_token().expect_value();
+            self.try_consume_token(TokenType::OpenParen, "Expected open parenthesis")?;
+
+            // parse parameters
+            let mut params = Vec::new();
+            if !self.matches(TokenType::CloseParen) {
+                loop {
+                    self.try_consume_token(TokenType::Ident, "Expected type identifier")?;
+                    let type_ident = self.current_token().expect_value();
+                    self.try_consume_token(TokenType::Ident, "Expected variable identifier")?;
+                    let var_ident = self.current_token().expect_value();
+                    params.push(TypedVar::new(type_ident, var_ident));
+                    
+                    if self.matches(TokenType::CloseParen) {
+                        break;
+                    }
+                    if self.matches(TokenType::Comma) {
+                        continue;
+                    }
+                    return ParseError::new(
+                        "Expected argument delimiter ',' or closed parenthesis ')'",
+                        self.peek(),
+                    )
+                    .wrap();
+                }
+            }
+            // parse return type
+            let mut return_type = None;
+            if self.matches(TokenType::Ident) {
+                return_type = Some(self.current_token().expect_value());
+            }
+            let body = self.parse_code_block()?;
+            self.stmts.push(Stmt::FnDecl {
+                ident: fn_ident,
+                params: vec![],
+                return_type,
+                body,
+            });
         } else {
-            self.struct_decl()
+            self.parse_struct_decl()?
         }
+        Ok(())
     }
 
-    fn struct_decl(&mut self)  -> ParseResult {
-        if self.matches(TokenType::Struct) {
-            todo!()
-        } else {
-            self.expression()
-        }
+    fn parse_code_block(&mut self) -> Result<CodeBlock, ParseError> {
+        self.try_consume_token(TokenType::OpenBrace, "Expected open brace")?;
+        // Variable Decl
+        // if(-else) statement
+        // if is statement (switch or match)
+        // function call
+        // return statement
+        if let Some(token) = self.peek() {}
+        todo!()
     }
 
-    fn expression(&mut self) -> ParseResult {
-        self.equality()
+    fn parse_ret_stmt(&mut self) -> Result<(), ParseError> {
+        if self.matches(TokenType::Ret) {
+            let expr = self.parse_expression()?;
+            self.stmts.push(Stmt::Ret(expr));
+        }
+        Ok(())
+    }
+
+    fn parse_struct_decl(&mut self) -> Result<(), ParseError> {
+        self.advance();
+        todo!()
+    }
+
+    fn parse_expression(&mut self) -> ExprParseResult {
+        self.parse_equality_expr()
     }
 
     // a != b   a == b
-    fn equality(&mut self) -> ParseResult {
-        let mut expr = self.comparison()?;
+    fn parse_equality_expr(&mut self) -> ExprParseResult {
+        let mut expr = self.parse_comparison_expr()?;
         while self.matches_any(&[TokenType::NotEqualTo, TokenType::EqualTo]) {
-            let right = self.comparison()?;
-            expr = ASTNode::binary(expr, self.current_token.clone().unwrap(), right);
+            let right = self.parse_comparison_expr()?;
+            expr = Expr::binary(expr, self.current_token.clone().unwrap(), right);
         }
         Ok(expr)
     }
 
     // a > b   a >= b   a < b   a <= b
-    fn comparison(&mut self) -> ParseResult {
-        let mut expr = self.term()?;
+    fn parse_comparison_expr(&mut self) -> ExprParseResult {
+        let mut expr = self.parse_term_expr()?;
         let tokens = &[
             TokenType::Greater,
             TokenType::GreaterOrEqual,
@@ -130,79 +207,79 @@ impl<'a> Parser<'a> {
                 .current_token
                 .clone()
                 .expect("Operator should be here.");
-            let right = self.term()?;
-            expr = ASTNode::binary(expr, operator, right);
+            let right = self.parse_term_expr()?;
+            expr = Expr::binary(expr, operator, right);
         }
         Ok(expr)
     }
 
     // a - b   a + b
-    fn term(&mut self) -> ParseResult {
-        let mut expr = self.factor()?;
+    fn parse_term_expr(&mut self) -> ExprParseResult {
+        let mut expr = self.parse_factor_expr()?;
         while self.matches_any(&[TokenType::Minus, TokenType::Plus]) {
             let operator = self
                 .current_token
                 .clone()
                 .expect("Operator should be here.");
-            let right = self.factor()?;
-            expr = ASTNode::binary(expr, operator, right)
+            let right = self.parse_factor_expr()?;
+            expr = Expr::binary(expr, operator, right)
         }
         Ok(expr)
     }
 
     // a / b   a * b   a % b
-    fn factor(&mut self) -> ParseResult {
-        let mut expr = self.unary()?;
+    fn parse_factor_expr(&mut self) -> ExprParseResult {
+        let mut expr = self.parse_unary_expr()?;
         while self.matches_any(&[TokenType::Slash, TokenType::Star, TokenType::Percent]) {
             let operator = self
                 .current_token
                 .clone()
                 .expect("Operator should be here.");
-            let right = self.unary()?;
-            expr = ASTNode::binary(expr, operator, right)
+            let right = self.parse_unary_expr()?;
+            expr = Expr::binary(expr, operator, right)
         }
         Ok(expr)
     }
 
     // !a   -a
-    fn unary(&mut self) -> ParseResult {
+    fn parse_unary_expr(&mut self) -> ExprParseResult {
         while self.matches_any(&[TokenType::Excl, TokenType::Minus]) {
             let operator = self
                 .current_token
                 .clone()
                 .expect("Operator should be here.");
-            let right = self.primary()?;
-            return Ok(ASTNode::unary(operator, right));
+            let right = self.parse_primary_expr()?;
+            return Ok(Expr::unary(operator, right));
         }
-        self.primary()
+        self.parse_primary_expr()
     }
     // literals and function calls
-    fn primary(&mut self) -> ParseResult {
+    fn parse_primary_expr(&mut self) -> ExprParseResult {
         if self.matches(TokenType::True) {
-            return Ok(ASTNode::BoolLiteral(true));
+            return Ok(Expr::BoolLiteral(true));
         }
         if self.matches(TokenType::False) {
-            return Ok(ASTNode::BoolLiteral(false));
+            return Ok(Expr::BoolLiteral(false));
         }
         if self.matches(TokenType::StringLiteral) {
             if let Some(literal) = self.current_token.as_ref().and_then(|t| t.value.clone()) {
-                return Ok(ASTNode::StringLiteral(literal));
+                return Ok(Expr::StringLiteral(literal));
             }
             unreachable!() // we're checking if the token is a string literal so this should never be reached
         }
         if self.matches(TokenType::NumberLiteral) {
             if let Some(literal) = self.current_token.as_ref().and_then(|t| t.value.clone()) {
-                return Ok(ASTNode::NumberLiteral(literal));
+                return Ok(Expr::NumberLiteral(literal));
             }
             unreachable!() // we're checking if the token is a number literal so this should never be reached
         }
         if self.matches(TokenType::OpenParen) {
-            let expr = self.expression()?;
-            self.consume(TokenType::CloseParen, "Expected '(' after expression.")?;
-            return Ok(ASTNode::Grouping(Box::new(expr)));
+            let expr = self.parse_expression()?;
+            self.try_consume_token(TokenType::CloseParen, "Expected '(' after expression.")?;
+            return Ok(Expr::Grouping(Box::new(expr)));
         }
 
-        ParseError::new("Expected an expression", &self.token_stream.peek().cloned()).wrap()
+        ParseError::new("Expected an expression", self.peek()).wrap()
     }
     /// checks if next token is of one of the given types, then moves on to that token
     fn matches_any(&mut self, tokens: &[TokenType]) -> bool {
@@ -226,19 +303,19 @@ impl<'a> Parser<'a> {
     // checks if the following token is of the given type.
     fn is_next_of_type(&mut self, token_type: TokenType) -> bool {
         if let Some(current_token) = self.peek() {
-            if token_type == current_token._type && token_type != TokenType::EndOfFile {
+            if token_type == current_token.r#type && token_type != TokenType::EndOfFile {
                 return true;
             }
         }
         false
     }
 
-    // if next token is of given type, advances. If not, return an error.
-    fn consume(&mut self, token_type: TokenType, msg: &str) -> Result<(), ParseError> {
+    // if next token is of given type, advances. If not, return an error with given message.
+    fn try_consume_token(&mut self, token_type: TokenType, msg: &str) -> Result<(), ParseError> {
         if self.is_next_of_type(token_type) {
             self.advance();
             return Ok(());
         }
-        Err(ParseError::new(msg, &self.peek().cloned()))
+        Err(ParseError::new(msg, self.peek()))
     }
 }
