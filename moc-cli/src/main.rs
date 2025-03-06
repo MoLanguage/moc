@@ -1,7 +1,7 @@
 use std::{fs::File, io::Read};
 
 use clap::Parser;
-use moc_parser::{lexer::Lexer, parser, CodeLocation, Token, TokenType};
+use moc_parser::{ASTNode, CodeLocation, Token, TokenType, lexer::Lexer, parser};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -35,8 +35,14 @@ fn main() {
                 }
             }
 
-            //let mut parser = parser::Parser::new(lexer);
-            //println!("{:?}", parser.parse().unwrap());
+            let mut parser = parser::Parser::new(lexer);
+            let ast = parser.parse().unwrap();
+            let ast = ASTNode::binary(
+                ASTNode::NumberLiteral("2".into()),
+                Token::new(TokenType::Plus, CodeLocation::default()),
+                ASTNode::NumberLiteral("2".into()),
+            );
+            println!("{}", ast);
         }
         Err(err) => {
             eprintln!("{}", err)
