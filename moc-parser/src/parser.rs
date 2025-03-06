@@ -123,7 +123,7 @@ impl<'a> Parser<'a> {
                     self.try_consume_token(TokenType::Ident, "Expected variable identifier")?;
                     let var_ident = self.current_token().expect_value();
                     params.push(TypedVar::new(type_ident, var_ident));
-                    
+
                     if self.matches(TokenType::CloseParen) {
                         break;
                     }
@@ -262,16 +262,10 @@ impl<'a> Parser<'a> {
             return Ok(Expr::BoolLiteral(false));
         }
         if self.matches(TokenType::StringLiteral) {
-            if let Some(literal) = self.current_token.as_ref().and_then(|t| t.value.clone()) {
-                return Ok(Expr::StringLiteral(literal));
-            }
-            unreachable!() // we're checking if the token is a string literal so this should never be reached
+            return Ok(Expr::StringLiteral(self.current_token().expect_value()));
         }
         if self.matches(TokenType::NumberLiteral) {
-            if let Some(literal) = self.current_token.as_ref().and_then(|t| t.value.clone()) {
-                return Ok(Expr::NumberLiteral(literal));
-            }
-            unreachable!() // we're checking if the token is a number literal so this should never be reached
+            return Ok(Expr::NumberLiteral(self.current_token().expect_value()));
         }
         if self.matches(TokenType::OpenParen) {
             let expr = self.parse_expression()?;
