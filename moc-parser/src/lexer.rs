@@ -176,7 +176,7 @@ impl<'a> Lexer<'a> {
                 '-' => TokenType::Minus,
                 '*' => TokenType::Star,
                 '/' => TokenType::Slash,
-                '%' => TokenType::Mod,
+                '%' => TokenType::Percent,
                 '&' => TokenType::BitAnd,
                 '|' => TokenType::BitOr,
                 '^' => TokenType::BitXor,

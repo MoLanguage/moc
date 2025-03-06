@@ -19,6 +19,7 @@ fn main() {
         Ok(mut file) => {
             file.read_to_string(&mut src).unwrap();
             let mut lexer = Lexer::new(&src);
+            let lexer2 = lexer.clone();
             loop {
                 let token = lexer.next_token();
                 match token {
@@ -35,13 +36,8 @@ fn main() {
                 }
             }
 
-            let mut parser = parser::Parser::new(lexer);
+            let mut parser = parser::Parser::new(lexer2);
             let ast = parser.parse().unwrap();
-            let ast = ASTNode::binary(
-                ASTNode::NumberLiteral("2".into()),
-                Token::new(TokenType::Plus, CodeLocation::default()),
-                ASTNode::NumberLiteral("2".into()),
-            );
             println!("{}", ast);
         }
         Err(err) => {

@@ -60,7 +60,7 @@ pub enum TokenType {
     LineBreak, // encompassing CRLF and LF in one token.
     Loop,
     Minus,
-    Mod,
+    Percent,
     ModAssign,
     MultAssign,
     NotEqualTo,
@@ -278,4 +278,9 @@ impl Display for ASTNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.print())
     }
+}
+
+#[test]
+fn token_type_eq() {
+    assert!(TokenType::At == TokenType::At)
 }

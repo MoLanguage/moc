@@ -22,7 +22,7 @@ impl ParseError {
 }
 
 pub type ParseResult = Result<ASTNode, ParseError>;
-pub struct Parser<'a> {
+pub struct Parser<'a> { 
     token_stream: Peekable<Lexer<'a>>,
     current_token: Option<Token>,
 }
@@ -44,7 +44,12 @@ impl<'a> Parser<'a> {
     }
 
     fn advance(&mut self) {
-        self.current_token = self.token_stream.next();
+        if let Some(token) = self.token_stream.peek() {
+            if token._type != TokenType::EndOfFile {
+                self.current_token = self.token_stream.next();
+                //dbg!(&self.current_token);
+            }
+        }
     }
 
     fn peek(&mut self) -> Option<&Token> {
@@ -52,7 +57,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse(&mut self) -> ParseResult {
-        self.use_stmt()
+        self.comparison()
     }
 
     pub fn parse_item(&mut self) -> ParseResult {
@@ -145,10 +150,10 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    // a / b   a * b
+    // a / b   a * b   a % b
     fn factor(&mut self) -> ParseResult {
         let mut expr = self.unary()?;
-        while self.matches_any(&[TokenType::Slash, TokenType::Star]) {
+        while self.matches_any(&[TokenType::Slash, TokenType::Star, TokenType::Percent]) {
             let operator = self
                 .current_token
                 .clone()
@@ -183,22 +188,20 @@ impl<'a> Parser<'a> {
             if let Some(literal) = self.current_token.as_ref().and_then(|t| t.value.clone()) {
                 return Ok(ASTNode::StringLiteral(literal));
             }
-            unreachable!() // we're checking if the token is a literal so this should never be reached
+            unreachable!() // we're checking if the token is a string literal so this should never be reached
         }
         if self.matches(TokenType::NumberLiteral) {
             if let Some(literal) = self.current_token.as_ref().and_then(|t| t.value.clone()) {
                 return Ok(ASTNode::NumberLiteral(literal));
             }
-            unreachable!() // we're checking if the token is a literal so this should never be reached
+            unreachable!() // we're checking if the token is a number literal so this should never be reached
         }
         if self.matches(TokenType::OpenParen) {
             let expr = self.expression()?;
             self.consume(TokenType::CloseParen, "Expected '(' after expression.")?;
             return Ok(ASTNode::Grouping(Box::new(expr)));
         }
-        if self.matches(TokenType::EndOfFile) {
-            return Ok(ASTNode::EndOfFile);
-        }
+
         ParseError::new("Expected an expression", &self.token_stream.peek().cloned()).wrap()
     }
     /// checks if next token is of one of the given types, then moves on to that token
@@ -223,7 +226,7 @@ impl<'a> Parser<'a> {
     // checks if the following token is of the given type.
     fn is_next_of_type(&mut self, token_type: TokenType) -> bool {
         if let Some(current_token) = self.peek() {
-            if token_type == current_token._type {
+            if token_type == current_token._type && token_type != TokenType::EndOfFile {
                 return true;
             }
         }
