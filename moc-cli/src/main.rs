@@ -1,7 +1,7 @@
-use std::{fs::File, io::Read};
+use std::{env, fs::File, io::Read};
 
 use clap::Parser;
-use moc_parser::{Expr, CodeLocation, Token, TokenType, lexer::Lexer, parser};
+use moc_parser::{CodeLocation, Expr, Token, TokenType, lexer::Lexer, parser};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -12,6 +12,9 @@ struct Args {
 }
 
 fn main() {
+    unsafe {
+        env::set_var("RUST_BACKTRACE", "1");
+    }
     let args = Args::parse();
 
     let mut src = String::new();
@@ -19,7 +22,6 @@ fn main() {
         Ok(mut file) => {
             file.read_to_string(&mut src).unwrap();
             let mut lexer = Lexer::new(&src);
-            let lexer2 = lexer.clone();
             loop {
                 let token = lexer.next_token();
                 match token {
@@ -36,9 +38,11 @@ fn main() {
                 }
             }
 
-            let mut parser = parser::Parser::new(lexer2);
+            let parser = parser::Parser::new(Lexer::new(&src));
             let ast = parser.parse().unwrap();
-            //println!("{}", ast);
+            for stmt in ast {
+                println!("{}", stmt);
+            }
         }
         Err(err) => {
             eprintln!("{}", err)

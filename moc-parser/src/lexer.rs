@@ -123,7 +123,7 @@ impl<'a> Lexer<'a> {
                     self.advance();
                     if self.chars.peek() == Some(&'=') {
                         self.advance();
-                        return Ok(Token::new(TokenType::Declare, self.location));
+                        return Ok(Token::new(TokenType::DeclareAssign, self.location));
                     }
                     Ok(Token::new(TokenType::Colon, self.location))
                 }

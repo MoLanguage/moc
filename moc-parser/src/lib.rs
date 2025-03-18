@@ -1,4 +1,4 @@
-use std::fmt::{Display, format};
+use std::fmt::Display;
 
 pub mod lexer;
 pub mod parser;
@@ -38,7 +38,7 @@ pub enum TokenType {
     CloseParen,
     Colon,
     Comma,
-    Declare,
+    DeclareAssign,
     Defer,
     DivAssign,
     Dot,
@@ -122,6 +122,28 @@ impl Token {
 }
 
 #[derive(Debug)]
+pub struct TypedVar {
+    /// the type identifier
+    type_ident: String,
+    /// the identifier of the actual variable}
+    ident: String,
+}
+
+impl TypedVar {
+    fn new(data_type: String, ident: String) -> Self {
+        Self {
+            type_ident: data_type,
+            ident,
+        }
+    }
+}
+#[derive(Debug)]
+pub struct FnCall {
+    ident: String,
+    args: Vec<Expr>
+}
+
+#[derive(Debug)]
 pub enum Expr {
     // Expressions
     Binary {
@@ -130,6 +152,7 @@ pub enum Expr {
         right_expr: Box<Expr>,
     },
     BoolLiteral(bool),
+    FnCall(FnCall), // maybe this is shit, but we'll just solve the problem first.
     Grouping(Box<Expr>),
     VariableIdent(String),
 
@@ -146,11 +169,29 @@ pub struct CodeBlock {
     pub stmts: Vec<Stmt>,
 }
 
+impl CodeBlock {
+    fn new() -> Self {
+        Self { stmts: Vec::new() }
+    }
+}
+
 pub enum Stmt {
-    Print(Box<Expr>), // probably dont wanna have this as inbuilt function
-    VarDecl {
+    Print(Expr), // probably dont wanna have this as inbuilt function
+    // Int32 a (declaring variable)
+    VarDecl {       
         ident: String,
-        value: Box<Expr>,
+        value: Expr,
+    },
+    // a = 10 (updating value)
+    VarAssign {     
+        ident: String,
+        value: Expr,
+    },
+    // Int32 a := 10 OR a := 10 (infers type)
+    VarDeclAssign {
+        type_ident: Option<String>,
+        ident: String,
+        value: Expr,
     },
     Break,
     UseDecl {
@@ -163,31 +204,143 @@ pub enum Stmt {
         return_type: Option<String>,
         body: CodeBlock,
     },
+    FnCall(FnCall), // maybe this is shit, but we'll just solve the problem first.
+    ForLoop {
+        condition: Expr,
+        code_block: CodeBlock
+    },
     If {
-        condition: Box<Expr>,
-        if_block: Vec<Expr>,
-        else_block: Option<Vec<Expr>>,
-    }, // boolean expr, if-case, optional else-case
+        condition: Expr,
+        if_block: CodeBlock,
+        else_block: Option<CodeBlock>,
+    },
     Ret(Expr), // return statement
     StructDecl {
         ident: String,
-        body: Vec<TypedVar>,
+        fields: Vec<TypedVar>,
     },
 }
 
-#[derive(Debug)]
-pub struct TypedVar {
-    /// the type identifier
-    type_ident: String,
-    /// the identifier of the actual variable} 
-    ident: String, 
-}
+impl Stmt {
+    fn print(&self) -> String {
+        let mut s = String::new();
+        self.print_inner(0, &mut s);
+        return s;
+    }
 
-impl TypedVar {
-    fn new(data_type: String, ident: String) -> Self {
-        Self { type_ident: data_type, ident }
+    fn print_inner(&self, depth: usize, result: &mut String) {
+        let depth = depth + 1;
+        result.push_str(&format!("{}{}", "\n", INDENT.repeat(depth)));
+        match self {
+            Stmt::Print(astnode) => {
+                result.push_str("Print");
+                astnode.print_inner(depth, result);
+            }
+            Stmt::VarDecl { ident, value } => {
+                result.push_str(&format!("VarDecl \"{}\"", ident));
+                value.print_inner(depth, result);
+            }
+            Stmt::Break => {
+                result.push_str("Break");
+            }
+            Stmt::If {
+                condition,
+                if_block,
+                else_block,
+            } => {
+                result.push_str("If: ");
+                condition.print_inner(depth, result);
+                for if_block_stmt in &if_block.stmts {
+                    if_block_stmt.print_inner(depth, result);
+                }
+                if let Some(else_block) = else_block {
+                    for else_block_stmt in &else_block.stmts {
+                        else_block_stmt.print_inner(depth, result);
+                    }
+                }
+            }
+            Stmt::UseDecl {
+                module_ident,
+                module_rename,
+            } => {
+                result.push_str(&format!("Use \"{}\"", module_ident));
+                if let Some(mod_rename) = module_rename {
+                    result.push_str(&format!(" {}", mod_rename));
+                }
+            }
+            Stmt::FnDecl {
+                ident,
+                body,
+                return_type,
+                params,
+            } => {
+                result.push_str(&format!("FnDecl: {}(", ident));
+                for (i, param) in params.iter().enumerate() {
+                    result.push_str(&format!("{} {}", param.type_ident, param.ident));
+                    if i < params.len() - 1 {
+                        result.push_str(", ");
+                    }
+                }
+                result.push_str(")");
+                if let Some(return_type) = return_type {
+                    result.push_str(&format!(" {}", return_type));
+                }
+                for stmt in &body.stmts {
+                    stmt.print_inner(depth, result);
+                }
+            }
+            Stmt::StructDecl { ident, fields: body } => {
+                result.push_str(&format!("StructDecl: {}", ident));
+                for field_decl in body {
+                    result.push_str(&format!(
+                        "{:?} \"{}\"",
+                        field_decl.type_ident, field_decl.ident
+                    ));
+                }
+            }
+            Stmt::Ret(expr) => {
+                result.push_str("Ret: ");
+                expr.print_inner(depth, result);
+            }
+            Stmt::VarAssign { ident, value } => {
+                result.push_str(&format!("VarAssign \"{}\"", ident));
+                value.print_inner(depth, result);
+            }
+            Stmt::VarDeclAssign {
+                type_ident,
+                ident,
+                value,
+            } => {
+                result.push_str(&format!("VarDeclAssign \"{}\"", ident));
+                if let Some(type_ident) = type_ident {
+                    result.push_str(&format!(" {}", type_ident));
+                }
+                value.print_inner(depth, result);
+            },
+            Stmt::FnCall(fn_call) => {
+                result.push_str(&format!("FnCall: {}", fn_call.ident));
+                for arg in &fn_call.args {
+                    arg.print_inner(depth, result);
+                }
+            }
+            Stmt::ForLoop { condition, code_block } => {
+                result.push_str("ForLoop: ");
+                condition.print_inner(depth, result);
+                for stmt in &code_block.stmts {
+                    stmt.print_inner(depth, result);
+                }
+            }
+        }   
     }
 }
+
+impl Display for Stmt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.print())
+    }
+}
+
+const INDENT: &str = "  ";
 
 impl Expr {
     pub fn binary(left: Self, operator: Token, right: Self) -> Self {
@@ -206,13 +359,11 @@ impl Expr {
 
     fn print(&self) -> String {
         let mut s = String::new();
-        s.push_str("AST: ");
         self.print_inner(0, &mut s);
         return s;
     }
 
     fn print_inner(&self, depth: usize, result: &mut String) {
-        const INDENT: &str = "  ";
         let depth = depth + 1;
         result.push_str(&format!("{}{}", "\n", INDENT.repeat(depth)));
         match self {
@@ -243,6 +394,12 @@ impl Expr {
             }
             Expr::VariableIdent(ident) => {
                 result.push_str(&format!("VariableIdent: \"{}\"", ident));
+            }
+            Expr::FnCall(fn_call) => {
+                result.push_str(&format!("FnCall: {}", fn_call.ident));
+                for arg in &fn_call.args {
+                    arg.print_inner(depth, result);
+                }
             }
             /* Expr::If { condition, if_block, else_block } => {
                 result.push_str("If: ");
