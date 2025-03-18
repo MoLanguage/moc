@@ -179,8 +179,8 @@ pub enum Stmt {
     Print(Expr), // probably dont wanna have this as inbuilt function
     // Int32 a (declaring variable)
     VarDecl {       
-        ident: String,
-        value: Expr,
+        type_ident: String,
+        var_ident: String,
     },
     // a = 10 (updating value)
     VarAssign {     
@@ -236,9 +236,9 @@ impl Stmt {
                 result.push_str("Print");
                 astnode.print_inner(depth, result);
             }
-            Stmt::VarDecl { ident, value } => {
-                result.push_str(&format!("VarDecl \"{}\"", ident));
-                value.print_inner(depth, result);
+            Stmt::VarDecl { type_ident, var_ident } => {
+                result.push_str(&format!("VarDecl: \"{}\" {}", var_ident, type_ident));
+                
             }
             Stmt::Break => {
                 result.push_str("Break");

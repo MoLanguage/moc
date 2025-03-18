@@ -41,7 +41,7 @@ impl<'a> Parser<'a> {
     }
 
     // Int32 a
-    //   ^  
+    //   ^
     /// Gets and clones current token.
     /// # Panics
     /// If current token is None
@@ -50,25 +50,38 @@ impl<'a> Parser<'a> {
     }
 
     fn advance(&mut self) {
-        if let Some(token) = self.token_stream.peek() {
-            if token.r#type != TokenType::EndOfFile {
-                self.current_token = self.token_stream.next();
+        // maybe this is useless... maybe remove in lexing step?
+        if let Some(_) = self.token_stream.peek() {
+            self.current_token = self.token_stream.next();
 
-                // if current token is a line break and the before token was a line break, skip it.
-                if self.current_token.as_ref().unwrap().r#type == TokenType::LineBreak {
-                    if let Some(token) = self.token_stream.peek() {
-                        if token.r#type == TokenType::LineBreak {
-                            self.advance();
-                        }
-                    }
+            // if current token is a line break and the before token was a line break, skip it.
+            self.skip_tokens_of_same_time(TokenType::LineBreak);
+            self.skip_tokens_of_same_time(TokenType::Semicolon);
+            //dbg!(&self.current_token);
+        }
+    }
+
+    fn skip_tokens_of_same_time(&mut self, token_type: TokenType) {
+        if self.current_token.as_ref().unwrap().r#type == token_type {
+            if let Some(token) = self.token_stream.peek() {
+                if token.r#type == token_type {
+                    self.advance();
                 }
-                //dbg!(&self.current_token);
             }
         }
     }
 
     fn peek(&mut self) -> Option<&Token> {
-        self.token_stream.peek()
+        match self.token_stream.peek() {
+            Some(token) => {
+                if token.r#type == TokenType::EndOfFile {
+                    None
+                } else {
+                    Some(token)
+                }
+            },
+            None => None,
+        }
     }
 
     pub fn parse(mut self) -> ParseResult {
@@ -95,6 +108,7 @@ impl<'a> Parser<'a> {
                     continue; // continue for now
                 }
                 TokenType::EndOfFile => {
+                    self.advance();
                     break;
                 }
                 _ => {
@@ -200,9 +214,9 @@ impl<'a> Parser<'a> {
         // ambiguity: function call vs variable declaration
         let mut code_block = CodeBlock::new();
         loop {
+            dbg!(self.current_token());
             if let Some(token) = self.peek().cloned() {
                 match token.r#type {
-                    
                     // Problem to solve: Is a simple function call a statement or an expression?
                     // We omit function call expressions for now.
                     TokenType::Ident => {
@@ -220,7 +234,9 @@ impl<'a> Parser<'a> {
                     TokenType::If => code_block.stmts.push(self.parse_if_else_stmt()?),
                     TokenType::Ret => code_block.stmts.push(self.parse_ret_stmt()?),
                     TokenType::CloseBrace => {
+                        dbg!(self.current_token());
                         self.advance();
+                        dbg!(self.current_token());
                         break;
                     }
                     TokenType::LineBreak => {
@@ -235,6 +251,8 @@ impl<'a> Parser<'a> {
                         .wrap();
                     }
                 }
+            } else {
+                break;
             }
         }
 
@@ -267,6 +285,11 @@ impl<'a> Parser<'a> {
                     type_ident: Some(ident1),
                     ident: ident2,
                     value: expr,
+                });
+            } else if self.matches_any(&[TokenType::LineBreak, TokenType::Semicolon]) {
+                return Ok(Stmt::VarDecl {
+                    type_ident: ident1,
+                    var_ident: ident2,
                 });
             }
         } else if self.matches(TokenType::Assign) {
