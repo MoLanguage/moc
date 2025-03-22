@@ -57,7 +57,6 @@ impl<'a> Parser<'a> {
             // if current token is a line break and the before token was a line break, skip it.
             self.skip_tokens_of_same_time(TokenType::LineBreak);
             self.skip_tokens_of_same_time(TokenType::Semicolon);
-            //dbg!(&self.current_token);
         }
     }
 
@@ -195,7 +194,6 @@ impl<'a> Parser<'a> {
     fn parse_code_block(&mut self) -> Result<CodeBlock, ParseError> {
         self.try_consume_token(TokenType::OpenBrace, "Expected open brace")?;
         self.matches(TokenType::LineBreak); // move on if there's a linebreak. 
-        //FIXME: What if there are multiple linebreaks? :( Maybe remove multiple linebreaks in parser stage?
 
         // what can we expect within a code block?
         // variable declaration
@@ -214,7 +212,6 @@ impl<'a> Parser<'a> {
         // ambiguity: function call vs variable declaration
         let mut code_block = CodeBlock::new();
         loop {
-            dbg!(self.current_token());
             if let Some(token) = self.peek().cloned() {
                 match token.r#type {
                     // Problem to solve: Is a simple function call a statement or an expression?
@@ -234,9 +231,7 @@ impl<'a> Parser<'a> {
                     TokenType::If => code_block.stmts.push(self.parse_if_else_stmt()?),
                     TokenType::Ret => code_block.stmts.push(self.parse_ret_stmt()?),
                     TokenType::CloseBrace => {
-                        dbg!(self.current_token());
                         self.advance();
-                        dbg!(self.current_token());
                         break;
                     }
                     TokenType::LineBreak => {
