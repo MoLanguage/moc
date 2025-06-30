@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 
 pub mod lexer;
 pub mod parser;
@@ -68,7 +68,6 @@ pub enum TokenType {
     OpenBrace,
     OpenParen,
     Plus,
-    Print,
     Ret,
     Semicolon,
     Slash,
@@ -175,6 +174,15 @@ impl CodeBlock {
     }
 }
 
+pub struct ModuleIdentifier(Vec<String>);
+
+impl Display for ModuleIdentifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ModuleIdentifier")?;
+        self.0.fmt(f)
+    }
+}
+
 pub enum Stmt {
     Print(Expr), // probably dont wanna have this as inbuilt function
     // Int32 a (declaring variable)
@@ -195,10 +203,10 @@ pub enum Stmt {
     },
     Break,
     UseDecl {
-        module_ident: String,
-        module_rename: Option<String>,
+        module_ident: ModuleIdentifier,
+        module_alias: Option<String>,
     },
-    FnDecl {
+    FnDecl { // function declaration
         ident: String,
         params: Vec<TypedVar>,
         return_type: Option<String>,
@@ -261,11 +269,11 @@ impl Stmt {
             }
             Stmt::UseDecl {
                 module_ident,
-                module_rename,
+                module_alias,
             } => {
-                result.push_str(&format!("Use \"{}\"", module_ident));
-                if let Some(mod_rename) = module_rename {
-                    result.push_str(&format!(" {}", mod_rename));
+                result.push_str(&format!("Use {}", module_ident));
+                if let Some(mod_rename) = module_alias {
+                    result.push_str(&format!(" Alias: \"{}\"", mod_rename));
                 }
             }
             Stmt::FnDecl {

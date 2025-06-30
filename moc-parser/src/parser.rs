@@ -1,6 +1,6 @@
 use std::iter::Peekable;
 
-use crate::{CodeBlock, Expr, Stmt, Token, TokenType, TypedVar, lexer::Lexer};
+use crate::{CodeBlock, Expr, ModuleIdentifier, Stmt, Token, TokenType, TypedVar, lexer::Lexer};
 
 #[derive(Debug)]
 pub struct ParseError {
@@ -55,12 +55,12 @@ impl<'a> Parser<'a> {
             self.current_token = self.token_stream.next();
 
             // if current token is a line break and the before token was a line break, skip it.
-            self.skip_tokens_of_same_time(TokenType::LineBreak);
-            self.skip_tokens_of_same_time(TokenType::Semicolon);
+            self.skip_tokens_of_same_type(TokenType::LineBreak);
+            self.skip_tokens_of_same_type(TokenType::Semicolon);
         }
     }
 
-    fn skip_tokens_of_same_time(&mut self, token_type: TokenType) {
+    fn skip_tokens_of_same_type(&mut self, token_type: TokenType) {
         if self.current_token.as_ref().unwrap().r#type == token_type {
             if let Some(token) = self.token_stream.peek() {
                 if token.r#type == token_type {
@@ -78,7 +78,7 @@ impl<'a> Parser<'a> {
                 } else {
                     Some(token)
                 }
-            },
+            }
             None => None,
         }
     }
@@ -121,21 +121,45 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    fn parse_module_identifier(&mut self) -> Result<ModuleIdentifier, ParseError> {
+        let mut module_dirs = Vec::with_capacity(8);
+        if self.matches(TokenType::Ident) {
+            loop {
+                module_dirs.push(self.current_token().expect_value());
+                if self.matches(TokenType::Colon) {
+                    if self.matches(TokenType::Ident) {
+                        continue;
+                    } else {
+                        return ParseError::new(
+                            "Expected module directory",
+                            self.current_token.as_ref(),
+                        )
+                        .wrap();
+                    }
+                } else {
+                    break;
+                }
+            }
+        } else {
+            return ParseError::new("Expected module identifier", self.current_token.as_ref()).wrap();
+        }
+        Ok(ModuleIdentifier(module_dirs))
+    }
     // use io | use io "foo"
+    // use io:print | s
     fn parse_use_stmt(&mut self) -> Result<(), ParseError> {
         self.advance();
-        self.try_consume_token(TokenType::Ident, "Expected module identifier")?;
-        let identifier = self.current_token().expect_value();
+        let identifier = self.parse_module_identifier()?;
         let stmt;
         if self.matches(TokenType::StringLiteral) {
             stmt = Stmt::UseDecl {
                 module_ident: identifier,
-                module_rename: Some(self.current_token().expect_value()),
+                module_alias: Some(self.current_token().expect_value()),
             };
         } else {
             stmt = Stmt::UseDecl {
                 module_ident: identifier,
-                module_rename: None,
+                module_alias: None,
             };
         }
         self.stmts.push(stmt);
@@ -193,7 +217,7 @@ impl<'a> Parser<'a> {
 
     fn parse_code_block(&mut self) -> Result<CodeBlock, ParseError> {
         self.try_consume_token(TokenType::OpenBrace, "Expected open brace")?;
-        self.matches(TokenType::LineBreak); // move on if there's a linebreak. 
+        self.matches(TokenType::LineBreak); // move on if there's a linebreak.
 
         // what can we expect within a code block?
         // variable declaration

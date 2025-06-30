@@ -227,7 +227,6 @@ impl<'a> Lexer<'a> {
             "in" => Token::new(TokenType::In, self.location),
             "is" => Token::new(TokenType::Is, self.location),
             "loop" => Token::new(TokenType::Loop, self.location),
-            "print" => Token::new(TokenType::Print, self.location),
             "ret" => Token::new(TokenType::Ret, self.location),
             "struct" => Token::new(TokenType::Struct, self.location),
             "sum" => Token::new(TokenType::Sum, self.location),
