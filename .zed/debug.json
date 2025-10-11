@@ -1,0 +1,17 @@
+[
+  {
+    "label": "debug moc-cli",
+    "adapter": "CodeLLDB",
+    "build": {
+      "show_command": true,
+      "cwd": "$ZED_WORKTREE_ROOT/moc",
+      "command": "cargo",
+      "args": ["build", "-p", "moc-cli"]
+    },
+    // sourceLanguages is required for CodeLLDB (not GDB) when using Rust
+    "sourceLanguages": ["rust"],
+    "program": "$ZED_WORKTREE_ROOT/moc/target/debug/moc-cli",
+    "request": "launch",
+    "args": ["--path", "examples/basic.mo"]
+  }
+]

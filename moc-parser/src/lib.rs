@@ -1,5 +1,7 @@
 use std::fmt::{Debug, Display};
 
+use derive_more::Display;
+
 pub mod lexer;
 pub mod parser;
 
@@ -12,8 +14,8 @@ pub struct Token {
 
 #[derive(Debug, Clone, Copy)]
 pub struct CodeLocation {
-    line: u32,
-    column: u32,
+    pub line: u32,
+    pub column: u32,
 }
 
 impl Default for CodeLocation {
@@ -22,7 +24,7 @@ impl Default for CodeLocation {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display)]
 pub enum TokenType {
     AddAssign,
     Assign,
@@ -115,7 +117,7 @@ impl Token {
 
     /// # Panics
     /// Panics if no value is present
-    pub fn expect_value(&self) -> String {
+    pub fn unwrap_value(&self) -> String {
         self.value.as_ref().expect("Expected value").clone()
     }
 }
@@ -124,7 +126,7 @@ impl Token {
 pub struct TypedVar {
     /// the type identifier
     type_ident: String,
-    /// the identifier of the actual variable}
+    /// the identifier of the actual variable
     ident: String,
 }
 
@@ -474,7 +476,12 @@ impl Display for Expr {
     }
 }
 
-#[test]
-fn token_type_eq() {
-    assert!(TokenType::At == TokenType::At)
+#[cfg(test)]
+mod test {
+  use super::*;
+  
+  #[test]
+  fn token_type_eq() {
+      assert!(TokenType::At == TokenType::At)
+  }
 }

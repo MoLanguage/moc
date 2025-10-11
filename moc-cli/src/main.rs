@@ -1,7 +1,9 @@
-use std::{env, fs::File, io::Read};
+use std::{fs::File, io::Read};
 
 use clap::Parser;
-use moc_parser::{CodeLocation, Expr, Token, TokenType, lexer::Lexer, parser};
+use moc_parser::{
+    lexer::Lexer, parser::{self, ParserError}, TokenType
+};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -23,7 +25,7 @@ fn main() {
                 let token = lexer.next_token();
                 match token {
                     Ok(token) => {
-                        println!("{:?}", token);
+                        //dbg!(&token);
                         if token.r#type == TokenType::EndOfFile {
                             break;
                         }
@@ -36,13 +38,29 @@ fn main() {
             }
 
             let parser = parser::Parser::new(Lexer::new(&src));
-            let ast = parser.parse().unwrap();
-            for stmt in ast {
-                println!("{}", stmt);
+            match parser.parse() {
+                Ok(ast) => {
+                  for stmt in ast {
+                      println!("{}", stmt);
+                  }
+                },
+                Err(parse_error) => {
+                  print_parser_error(parse_error);
+                },
             }
+            
         }
         Err(err) => {
             eprintln!("{}", err)
         }
     };
+}
+
+fn print_parser_error(parser_error: ParserError) {
+    if let Some(token) = parser_error.last_token {
+      eprintln!("Parser error at line {}, column {}: {}", token.location.line, token.location.column, parser_error.msg);
+      eprintln!("Last token: {}", token.r#type)
+    } else {
+      eprintln!("Parse error: {}", parser_error.msg);
+    }
 }

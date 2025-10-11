@@ -11,7 +11,7 @@ pub struct Lexer<'a> {
 
 impl<'a> Iterator for Lexer<'a> {
     type Item = Token;
-
+    
     fn next(&mut self) -> Option<Self::Item> {
         self.next_token().ok()
     }
@@ -19,13 +19,14 @@ impl<'a> Iterator for Lexer<'a> {
 
 #[derive(Debug)]
 pub enum LexerError {
-    UnendingStringLiteral(CodeLocation),
+    UnterminatedStringLiteral(CodeLocation),
     InvalidCharacter(char),
     UnknownEscapeCharacter,
     UnknownToken,
 }
 
 type LexerResult = Result<Token, LexerError>;
+
 
 impl<'a> Lexer<'a> {
     pub fn new(input: &'a str) -> Self {
@@ -44,10 +45,14 @@ impl<'a> Lexer<'a> {
         self.location.column += 1;
         self.chars.next()
     }
+    
+    fn peek_char(&mut self) -> Option<char> {
+        self.chars.peek().cloned()
+    }
 
     fn lex_crlf(&mut self) -> Option<Token> {
         self.advance();
-        if self.chars.peek() == Some(&'\n') {
+        if self.peek_char() == Some('\n') {
             self.advance();
             self.line_break();
             return Some(Token::new(TokenType::LineBreak, self.location));
@@ -62,8 +67,7 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn next_token(&mut self) -> Result<Token, LexerError> {
-        while let Some(ch) = self.chars.peek() {
-            let ch = *ch;
+        while let Some(ch) = self.peek_char() {
             let token = match ch {
                 '.' => {
                     self.advance();
@@ -71,6 +75,10 @@ impl<'a> Lexer<'a> {
                 }
                 '!' => {
                     self.advance();
+                    if self.peek_char() == Some('=') {
+                        self.advance();
+                        return Ok(Token::new(TokenType::NotEqualTo, self.location));
+                    }
                     Ok(Token::new(TokenType::Excl, self.location))
                 }
                 '@' => {
@@ -83,7 +91,7 @@ impl<'a> Lexer<'a> {
                 }
                 '/' => {
                     self.advance();
-                    if self.chars.peek() == Some(&'/') {
+                    if self.peek_char() == Some('/') {
                         // two slashes means a comment
                         self.skip_comment();
                         continue;
@@ -93,7 +101,7 @@ impl<'a> Lexer<'a> {
                 ' ' | '\t' => {
                     self.advance();
                     continue;
-                } // Skip whitespace
+                } // Skip non-relevant whitespace
                 '\r' => {
                     if let Some(token) = self.lex_crlf() { 
                         return Ok(token);
@@ -121,7 +129,7 @@ impl<'a> Lexer<'a> {
                 }
                 ':' => {
                     self.advance();
-                    if self.chars.peek() == Some(&'=') {
+                    if self.peek_char() == Some('=') {
                         self.advance();
                         return Ok(Token::new(TokenType::DeclareAssign, self.location));
                     }
@@ -133,7 +141,7 @@ impl<'a> Lexer<'a> {
                 }
                 '=' => {
                     self.advance();
-                    if self.chars.peek() == Some(&'=') {
+                    if self.peek_char() == Some('=') {
                         self.advance();
                         return Ok(Token::new(TokenType::EqualTo, self.location));
                     }
@@ -146,13 +154,13 @@ impl<'a> Lexer<'a> {
                 _ => Err(LexerError::InvalidCharacter(ch)), // TODO: return proper LexerError
             };
             return token;
-        }
+        };
         Ok(Token::new(TokenType::EndOfFile, self.location))
     }
 
     fn lex_operator(&mut self, ch: char) -> LexerResult {
         self.advance();
-        if self.chars.peek() == Some(&'=') {
+        if self.peek_char() == Some('=') {
             let token_type = match ch {
                 '+' => TokenType::AddAssign,
                 '-' => TokenType::SubAssign,
@@ -191,7 +199,7 @@ impl<'a> Lexer<'a> {
     fn lex_number(&mut self) -> Token {
         let mut num = String::new();
 
-        while let Some(&ch) = self.chars.peek() {
+        while let Some(ch) = self.peek_char() {
             if ch.is_digit(10) {
                 num.push(ch);
                 self.advance();
@@ -208,7 +216,7 @@ impl<'a> Lexer<'a> {
     fn lex_ident(&mut self) -> Token {
         let mut ident = String::new();
 
-        while let Some(&ch) = self.chars.peek() {
+        while let Some(ch) = self.peek_char() {
             if ch.is_alphanumeric() || ch == '_' {
                 ident.push(ch);
                 self.advance();
@@ -237,7 +245,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn skip_comment(&mut self) {
-        while let Some(&ch) = self.chars.peek() {
+        while let Some(ch) = self.peek_char() {
             self.advance();
             if ch == '\r' || ch == '\n' {
                 break;
@@ -248,32 +256,32 @@ impl<'a> Lexer<'a> {
     // still need to add escaping of special characters. could do that later tho.
     fn lex_string_literal(&mut self) -> Result<Token, LexerError> {
         self.advance();
-        let mut literal = String::new();
+        let mut value = String::new();
         let mut ends_by_quote = false; // valid if string literal ends with another quote symbol "
-        while let Some(&ch) = self.chars.peek() {
+        while let Some(ch) = self.peek_char() {
             self.advance();
             match ch {
                 '\\' => {
-                    self.handle_escape_character(&mut literal)?;
+                    self.handle_escape_character(&mut value)?;
                 }
                 '\"' => {
                     ends_by_quote = true;
                     break;
                 }
                 _ => {
-                    literal.push(ch);
+                    value.push(ch);
                 }
             }
         }
         if ends_by_quote {
-            Ok(Token::string_literal(literal, self.location))
+            Ok(Token::string_literal(value, self.location))
         } else {
-            Err(LexerError::UnendingStringLiteral(self.location))
+            Err(LexerError::UnterminatedStringLiteral(self.location))
         }
     }
 
     fn handle_escape_character(&mut self, literal: &mut String) -> Result<(), LexerError> {
-        if let Some(ch) = self.chars.peek() {
+        if let Some(ch) = self.peek_char() {
             let replacement = match ch {
                 '\\' => Some('\\'),
                 '\"' => Some('\"'),
