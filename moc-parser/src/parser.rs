@@ -1,6 +1,6 @@
 use std::{iter::Peekable};
 
-use crate::{CodeBlock, Expr, ModuleIdentifier, Stmt, Token, TokenType, TypedVar, lexer::Lexer};
+use crate::{lexer::Lexer, CodeBlock, Expr, ModuleIdentifier, Operator, Stmt, Token, TokenType, TypedVar};
 
 #[derive(Debug)]
 pub struct ParserError {
@@ -59,13 +59,15 @@ impl<'a> Parser<'a> {
             self.current_token = self.token_stream.next();
 
             // if current token is a line break and the before token was a line break, skip it.
-            self.skip_tokens_of_same_type(TokenType::LineBreak);
-            self.skip_tokens_of_same_type(TokenType::Semicolon);
+            //self.skip_tokens_of_same_type(TokenType::LineBreak);
+            //self.skip_tokens_of_same_type(TokenType::Semicolon);
         }
     }
 
+    #[deprecated]
     fn skip_tokens_of_same_type(&mut self, token_type: TokenType) {
-        if self.current_token.as_ref().unwrap().r#type == token_type {
+        let current_token_type = self.current_token.as_ref().map(|t|t.r#type);
+        if current_token_type == Some(token_type) { // current token is of type
             if let Some(token) = self.token_stream.peek() {
                 if token.r#type == token_type {
                     self.advance();
@@ -126,7 +128,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_module_identifier(&mut self) -> Result<ModuleIdentifier, ParserError> {
-        let mut module_dirs = Vec::with_capacity(8);
+        let mut module_dirs = Vec::with_capacity(16);
         if self.matches(TokenType::Ident) {
             loop {
                 module_dirs.push(self.current_token().unwrap_value());
@@ -253,6 +255,10 @@ impl<'a> Parser<'a> {
                         if self.matches(TokenType::OpenParen) {
                             let stmt = self.parse_fn_call(ident)?;
                             code_block.stmts.push(stmt);
+                        } else if self.matches_predicate(|parser| parser.peek().is_some_and(|token| token.is_operator())) {
+                            let operator = self.current_token().r#type.try_into().unwrap();
+                            let value = self.parse_expression()?;
+                            code_block.stmts.push(Stmt::VarOperatorAssign { ident, operator, value });
                         } else {
                             let stmt = self.parse_var_decl_assignmt()?;
                             code_block.stmts.push(stmt);
@@ -496,23 +502,23 @@ impl<'a> Parser<'a> {
     // a - b   a + b
     fn parse_term_expr(&mut self) -> ExprParseResult {
         println!("parsing term expression (- +) {}", self.parser_state_dbg_info());
-        let mut expr = self.parse_factor_expr()?;
+        let mut expr = self.parse_factor_and_bitwise_expr()?;
         while self.matches_any(&[TokenType::Minus, TokenType::Plus]) {
             let operator = self
                 .current_token
                 .clone()
                 .expect("Operator should be here.");
-            let right = self.parse_factor_expr()?;
+            let right = self.parse_factor_and_bitwise_expr()?;
             expr = Expr::binary(expr, operator, right)
         }
         Ok(expr)
     }
 
-    // a / b   a * b   a % b
-    fn parse_factor_expr(&mut self) -> ExprParseResult {
+    // a / b   a * b   a % b   a ~ b   a << b   a >> b   a ^ b   a | b
+    fn parse_factor_and_bitwise_expr(&mut self) -> ExprParseResult {
         println!("Parsing factor expr (/ * %) {}", self.parser_state_dbg_info());
         let mut expr = self.parse_unary_expr()?;
-        while self.matches_any(&[TokenType::Slash, TokenType::Star, TokenType::Percent]) {
+        while self.matches_any(&[TokenType::Slash, TokenType::Star, TokenType::Percent, TokenType::Ampersand, TokenType::Tilde, TokenType::BitShiftLeft, TokenType::BitShiftRight, TokenType::Caret, TokenType::Pipe]) {
             let operator = self
                 .current_token
                 .clone()
@@ -586,6 +592,14 @@ impl<'a> Parser<'a> {
 
     fn matches(&mut self, token: TokenType) -> bool {
         if self.is_next_of_type(token) {
+            self.advance();
+            return true;
+        }
+        false
+    }
+    
+    fn matches_predicate<P>(&mut self, predicate: P) -> bool where P: FnOnce(&mut Parser) -> bool {
+        if predicate(self) {
             self.advance();
             return true;
         }

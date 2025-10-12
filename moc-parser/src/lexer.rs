@@ -49,6 +49,10 @@ impl<'a> Lexer<'a> {
     fn peek_char(&mut self) -> Option<char> {
         self.chars.peek().cloned()
     }
+    
+    fn create_token(&self, r#type: TokenType) -> Token {
+        Token::new(r#type, self.location)
+    }
 
     fn lex_crlf(&mut self) -> Option<Token> {
         self.advance();
@@ -83,11 +87,11 @@ impl<'a> Lexer<'a> {
                 }
                 '@' => {
                     self.advance();
-                    Ok(Token::new(TokenType::At, self.location))
+                    Ok(self.create_token(TokenType::At))
                 }
                 ',' => {
                     self.advance();
-                    Ok(Token::new(TokenType::Comma, self.location))
+                    Ok(self.create_token(TokenType::Comma))
                 }
                 '/' => {
                     self.advance();
@@ -147,7 +151,7 @@ impl<'a> Lexer<'a> {
                     }
                     Ok(Token::new(TokenType::Assign, self.location))
                 }
-                '+' | '-' | '*' | '%' | '&' | '|' | '^' | '<' | '>' => self.lex_operator(ch),
+                '+' | '-' | '*' | '%' | '&' | '|' | '~' | '^' | '<' | '>' => self.lex_operator(ch),
                 '0'..='9' => return Ok(self.lex_number()),
                 'a'..='z' | 'A'..='Z' | '_' => return Ok(self.lex_ident()),
                 '\"' => return self.lex_string_literal(),
@@ -157,9 +161,31 @@ impl<'a> Lexer<'a> {
         };
         Ok(Token::new(TokenType::EndOfFile, self.location))
     }
-
+    
     fn lex_operator(&mut self, ch: char) -> LexerResult {
         self.advance();
+        if ch == '<' {
+            if self.peek_char() == Some('<') {
+                // bit-shift left
+                self.advance();
+                if self.peek_char() == Some('=') {
+                    self.advance();
+                    return Ok(self.create_token(TokenType::BitShiftLeftAssign));
+                } 
+                return Ok(self.create_token(TokenType::BitShiftLeft));
+            }
+        }
+        if ch == '>' {
+            if self.peek_char() == Some('>') {
+                // bit-shift right
+                self.advance();
+                if self.peek_char() == Some('=') {
+                    self.advance();
+                    return Ok(self.create_token(TokenType::BitShiftRightAssign));
+                } 
+                return Ok(self.create_token(TokenType::BitShiftRight));
+            }
+        }
         if self.peek_char() == Some('=') {
             let token_type = match ch {
                 '+' => TokenType::AddAssign,
@@ -172,6 +198,7 @@ impl<'a> Lexer<'a> {
                 '^' => TokenType::BitXorAssign,
                 '<' => TokenType::LessOrEqual,
                 '>' => TokenType::GreaterOrEqual,
+                '~' => TokenType::BitNotAssign,
                 _ => unreachable!(),
             };
 
@@ -185,11 +212,12 @@ impl<'a> Lexer<'a> {
                 '*' => TokenType::Star,
                 '/' => TokenType::Slash,
                 '%' => TokenType::Percent,
-                '&' => TokenType::BitAnd,
-                '|' => TokenType::BitOr,
-                '^' => TokenType::BitXor,
+                '&' => TokenType::Ampersand,
+                '|' => TokenType::Pipe,
+                '^' => TokenType::Caret,
                 '<' => TokenType::Less,
                 '>' => TokenType::Greater,
+                '~' => TokenType::Tilde,
                 _ => unreachable!(),
             };
             return Ok(Token::new(token_type, self.location));

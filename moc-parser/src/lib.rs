@@ -26,23 +26,27 @@ impl Default for CodeLocation {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Display)]
 pub enum TokenType {
-    AddAssign,
-    Assign,
-    At,
-    BitAndAssign,
-    BitOrAssign,
-    BitXorAssign,
-    BitAnd,
-    BitOr,
-    BitXor, // replace with proper function call statement
+    AddAssign, // +=
+    Ampersand, // &
+    Assign, // =
+    At, // @
+    BitAndAssign, // &=
+    BitOrAssign, //  |=
+    BitXorAssign, // ^=
+    BitNotAssign, // ~=
+    BitShiftLeft, // <<
+    BitShiftRight, // >>
+    BitShiftLeftAssign, // <<=
+    BitShiftRightAssign, // >>=
     Break,
+    Caret, // ^
     CloseBrace,
     CloseParen,
     Colon,
     Comma,
-    DeclareAssign,
+    DeclareAssign, // :=
     Defer,
-    DivAssign,
+    DivAssign, // /=
     Dot,
     EqualTo,
     Excl,
@@ -63,6 +67,7 @@ pub enum TokenType {
     Loop,
     Minus,
     Percent,
+    Pipe,
     ModAssign,
     MultAssign,
     NotEqualTo,
@@ -78,6 +83,7 @@ pub enum TokenType {
     Struct,
     SubAssign,
     Sum,
+    Tilde, // ~
     True,
     Use,
 }
@@ -120,6 +126,45 @@ impl Token {
     pub fn unwrap_value(&self) -> String {
         self.value.as_ref().expect("Expected value").clone()
     }
+
+    pub fn is_operator_assign(&self) -> bool {
+        match self.r#type {
+            TokenType::AddAssign
+            | TokenType::SubAssign
+            | TokenType::MultAssign
+            | TokenType::DivAssign
+            | TokenType::BitAndAssign
+            | TokenType::BitXorAssign
+            | TokenType::BitOrAssign => true,
+            _ => false,
+        }
+    }
+    
+    pub fn is_operator(&self) -> bool {
+        TryInto::<Operator>::try_into(self.r#type).is_ok()
+    }
+}
+
+#[derive(Debug)]
+pub struct NonOperatorTokenError; // error if token is a non-operator token
+impl TryFrom<TokenType> for Operator {
+    type Error = NonOperatorTokenError;
+
+    fn try_from(value: TokenType) -> Result<Self, Self::Error> {
+        match value {
+            TokenType::AddAssign | TokenType::Plus => Ok(Operator::Add),
+            TokenType::SubAssign | TokenType::Minus => Ok(Operator::Sub),
+            TokenType::MultAssign | TokenType::Star => Ok(Operator::Mult),
+            TokenType::DivAssign | TokenType::Slash => Ok(Operator::Div),
+            TokenType::BitAndAssign | TokenType::Ampersand => Ok(Operator::BitAnd),
+            TokenType::BitXorAssign | TokenType::Caret => Ok(Operator::BitXor),
+            TokenType::BitOrAssign | TokenType::Pipe => Ok(Operator::BitOr),
+            TokenType::Tilde | TokenType::BitNotAssign => Ok(Operator::BitNot),
+            TokenType::BitShiftLeftAssign | TokenType::BitShiftLeft => Ok(Operator::BitShiftLeft),
+            TokenType::BitShiftRightAssign | TokenType::BitShiftRight => Ok(Operator::BitShiftRight),
+            _ => Err(NonOperatorTokenError)
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -141,7 +186,7 @@ impl TypedVar {
 #[derive(Debug)]
 pub struct FnCall {
     ident: String,
-    args: Vec<Expr>
+    args: Vec<Expr>,
 }
 
 #[derive(Debug)]
@@ -185,16 +230,37 @@ impl Display for ModuleIdentifier {
     }
 }
 
+#[derive(Clone, Copy, Debug, Display)]
+pub enum Operator {
+    Add,
+    Sub,    // Subtract
+    Mult,   // Multiply
+    Div,    // Divide
+    Mod,    // Modulo
+    BitShiftLeft,    // Bitshift left
+    BitShiftRight,    // Bitshift right
+    BitOr,  // Bitwise OR
+    BitAnd, // Bitwise AND
+    BitXor, // Bitwise XOR
+    BitNot, // Bitwise NOT
+}
+
 pub enum Stmt {
     Print(Expr), // probably dont wanna have this as inbuilt function
     // Int32 a (declaring variable)
-    VarDecl {       
+    VarDecl {
         type_ident: String,
         var_ident: String,
     },
     // a = 10 (updating value)
-    VarAssign {     
+    VarAssign {
         ident: String,
+        value: Expr,
+    },
+    // a += 10, a -= 10 etc. (operating and assigning)
+    VarOperatorAssign {
+        ident: String,
+        operator: Operator,
         value: Expr,
     },
     // Int32 a := 10 OR a := 10 (infers type)
@@ -208,7 +274,8 @@ pub enum Stmt {
         module_ident: ModuleIdentifier,
         module_alias: Option<String>,
     },
-    FnDecl { // function declaration
+    FnDecl {
+        // function declaration
         ident: String,
         params: Vec<TypedVar>,
         return_type: Option<String>,
@@ -217,7 +284,7 @@ pub enum Stmt {
     FnCall(FnCall), // maybe this is shit, but we'll just solve the problem first.
     ForLoop {
         condition: Expr,
-        code_block: CodeBlock
+        code_block: CodeBlock,
     },
     If {
         condition: Expr,
@@ -231,6 +298,11 @@ pub enum Stmt {
     },
 }
 
+const INDENT: &str = "  ";
+fn create_indent(depth: usize) -> String {
+    format!("{}{}", "\n", INDENT.repeat(depth))
+}
+
 impl Stmt {
     fn print(&self) -> String {
         let mut s = String::new();
@@ -240,15 +312,17 @@ impl Stmt {
 
     fn print_inner(&self, depth: usize, result: &mut String) {
         let depth = depth + 1;
-        result.push_str(&format!("{}{}", "\n", INDENT.repeat(depth)));
+        result.push_str(&create_indent(depth));
         match self {
             Stmt::Print(astnode) => {
                 result.push_str("Print");
                 astnode.print_inner(depth, result);
             }
-            Stmt::VarDecl { type_ident, var_ident } => {
+            Stmt::VarDecl {
+                type_ident,
+                var_ident,
+            } => {
                 result.push_str(&format!("VarDecl: \"{}\" {}", var_ident, type_ident));
-                
             }
             Stmt::Break => {
                 result.push_str("Break");
@@ -299,7 +373,10 @@ impl Stmt {
                     stmt.print_inner(depth, result);
                 }
             }
-            Stmt::StructDecl { ident, fields: body } => {
+            Stmt::StructDecl {
+                ident,
+                fields: body,
+            } => {
                 result.push_str(&format!("StructDecl: {}", ident));
                 for field_decl in body {
                     result.push_str(&format!(
@@ -326,21 +403,35 @@ impl Stmt {
                     result.push_str(&format!(" {}", type_ident));
                 }
                 value.print_inner(depth, result);
-            },
+            }
             Stmt::FnCall(fn_call) => {
                 result.push_str(&format!("FnCall: {}", fn_call.ident));
                 for arg in &fn_call.args {
                     arg.print_inner(depth, result);
                 }
             }
-            Stmt::ForLoop { condition, code_block } => {
+            Stmt::ForLoop {
+                condition,
+                code_block,
+            } => {
                 result.push_str("ForLoop: ");
                 condition.print_inner(depth, result);
                 for stmt in &code_block.stmts {
                     stmt.print_inner(depth, result);
                 }
+            },
+            Stmt::VarOperatorAssign { ident, operator, value } => {
+                result.push_str("VarOperatorAssign: ");
+                result.push_str(&format!("Ident: \"{}\" ", ident));
+                result.push_str(&format!("Operator: \"{}\" ", operator));
+                
+                //result.push_str(&create_indent(depth + 1));
+                result.push_str("Value: ");
+                
+                value.print_inner(depth, result);
             }
-        }   
+            _ => result.push_str("ERR: Stmt not yet registered in print function"),
+        }
     }
 }
 
@@ -349,8 +440,6 @@ impl Display for Stmt {
         f.write_str(&self.print())
     }
 }
-
-const INDENT: &str = "  ";
 
 impl Expr {
     pub fn binary(left: Self, operator: Token, right: Self) -> Self {
@@ -478,10 +567,10 @@ impl Display for Expr {
 
 #[cfg(test)]
 mod test {
-  use super::*;
-  
-  #[test]
-  fn token_type_eq() {
-      assert!(TokenType::At == TokenType::At)
-  }
+    use super::*;
+
+    #[test]
+    fn token_type_eq() {
+        assert!(TokenType::At == TokenType::At)
+    }
 }
