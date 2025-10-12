@@ -26,17 +26,17 @@ impl Default for CodeLocation {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Display)]
 pub enum TokenType {
-    AddAssign, // +=
-    Ampersand, // &
-    Assign, // =
-    At, // @
-    BitAndAssign, // &=
-    BitOrAssign, //  |=
-    BitXorAssign, // ^=
-    BitNotAssign, // ~=
-    BitShiftLeft, // <<
-    BitShiftRight, // >>
-    BitShiftLeftAssign, // <<=
+    AddAssign,           // +=
+    Ampersand,           // &
+    Assign,              // =
+    At,                  // @
+    BitAndAssign,        // &=
+    BitOrAssign,         //  |=
+    BitXorAssign,        // ^=
+    BitNotAssign,        // ~=
+    BitShiftLeft,        // <<
+    BitShiftRight,       // >>
+    BitShiftLeftAssign,  // <<=
     BitShiftRightAssign, // >>=
     Break,
     Caret, // ^
@@ -139,30 +139,32 @@ impl Token {
             _ => false,
         }
     }
-    
-    pub fn is_operator(&self) -> bool {
-        TryInto::<Operator>::try_into(self.r#type).is_ok()
+
+    pub fn is_binary_op(&self) -> bool {
+        TryInto::<BinaryOp>::try_into(self.r#type).is_ok()
     }
 }
 
 #[derive(Debug)]
 pub struct NonOperatorTokenError; // error if token is a non-operator token
-impl TryFrom<TokenType> for Operator {
+impl TryFrom<TokenType> for BinaryOp {
     type Error = NonOperatorTokenError;
 
     fn try_from(value: TokenType) -> Result<Self, Self::Error> {
         match value {
-            TokenType::AddAssign | TokenType::Plus => Ok(Operator::Add),
-            TokenType::SubAssign | TokenType::Minus => Ok(Operator::Sub),
-            TokenType::MultAssign | TokenType::Star => Ok(Operator::Mult),
-            TokenType::DivAssign | TokenType::Slash => Ok(Operator::Div),
-            TokenType::BitAndAssign | TokenType::Ampersand => Ok(Operator::BitAnd),
-            TokenType::BitXorAssign | TokenType::Caret => Ok(Operator::BitXor),
-            TokenType::BitOrAssign | TokenType::Pipe => Ok(Operator::BitOr),
-            TokenType::Tilde | TokenType::BitNotAssign => Ok(Operator::BitNot),
-            TokenType::BitShiftLeftAssign | TokenType::BitShiftLeft => Ok(Operator::BitShiftLeft),
-            TokenType::BitShiftRightAssign | TokenType::BitShiftRight => Ok(Operator::BitShiftRight),
-            _ => Err(NonOperatorTokenError)
+            TokenType::AddAssign | TokenType::Plus => Ok(BinaryOp::Add),
+            TokenType::SubAssign | TokenType::Minus => Ok(BinaryOp::Sub),
+            TokenType::MultAssign | TokenType::Star => Ok(BinaryOp::Mult),
+            TokenType::DivAssign | TokenType::Slash => Ok(BinaryOp::Div),
+            TokenType::BitAndAssign | TokenType::Ampersand => Ok(BinaryOp::BitAnd),
+            TokenType::BitXorAssign | TokenType::Caret => Ok(BinaryOp::BitXor),
+            TokenType::BitOrAssign | TokenType::Pipe => Ok(BinaryOp::BitOr),
+            TokenType::Tilde | TokenType::BitNotAssign => Ok(BinaryOp::BitNot),
+            TokenType::BitShiftLeftAssign | TokenType::BitShiftLeft => Ok(BinaryOp::BitShiftLeft),
+            TokenType::BitShiftRightAssign | TokenType::BitShiftRight => {
+                Ok(BinaryOp::BitShiftRight)
+            }
+            _ => Err(NonOperatorTokenError),
         }
     }
 }
@@ -183,11 +185,6 @@ impl TypedVar {
         }
     }
 }
-#[derive(Debug)]
-pub struct FnCall {
-    ident: String,
-    args: Vec<Expr>,
-}
 
 #[derive(Debug)]
 pub enum Expr {
@@ -198,7 +195,10 @@ pub enum Expr {
         right_expr: Box<Expr>,
     },
     BoolLiteral(bool),
-    FnCall(FnCall), // maybe this is shit, but we'll just solve the problem first.
+    FnCall {
+        ident: String,
+        args: Vec<Expr>,
+    },
     Grouping(Box<Expr>),
     VariableIdent(String),
 
@@ -207,7 +207,7 @@ pub enum Expr {
 
     StringLiteral(String),
     Unary(Token, Box<Expr>), // Operator followed by another expr
-    //IfIs
+
     EndOfFile,
 }
 
@@ -231,18 +231,18 @@ impl Display for ModuleIdentifier {
 }
 
 #[derive(Clone, Copy, Debug, Display)]
-pub enum Operator {
+pub enum BinaryOp {
     Add,
-    Sub,    // Subtract
-    Mult,   // Multiply
-    Div,    // Divide
-    Mod,    // Modulo
-    BitShiftLeft,    // Bitshift left
-    BitShiftRight,    // Bitshift right
-    BitOr,  // Bitwise OR
-    BitAnd, // Bitwise AND
-    BitXor, // Bitwise XOR
-    BitNot, // Bitwise NOT
+    Sub,           // Subtract
+    Mult,          // Multiply
+    Div,           // Divide
+    Mod,           // Modulo
+    BitShiftLeft,  // Bitshift left
+    BitShiftRight, // Bitshift right
+    BitOr,         // Bitwise OR
+    BitAnd,        // Bitwise AND
+    BitXor,        // Bitwise XOR
+    BitNot,        // Bitwise NOT
 }
 
 pub enum Stmt {
@@ -260,7 +260,7 @@ pub enum Stmt {
     // a += 10, a -= 10 etc. (operating and assigning)
     VarOperatorAssign {
         ident: String,
-        operator: Operator,
+        operator: BinaryOp,
         value: Expr,
     },
     // Int32 a := 10 OR a := 10 (infers type)
@@ -270,6 +270,7 @@ pub enum Stmt {
         value: Expr,
     },
     Break,
+    Expr(Expr), // expression statement (like function call)
     UseDecl {
         module_ident: ModuleIdentifier,
         module_alias: Option<String>,
@@ -281,7 +282,6 @@ pub enum Stmt {
         return_type: Option<String>,
         body: CodeBlock,
     },
-    FnCall(FnCall), // maybe this is shit, but we'll just solve the problem first.
     ForLoop {
         condition: Expr,
         code_block: CodeBlock,
@@ -404,11 +404,17 @@ impl Stmt {
                 }
                 value.print_inner(depth, result);
             }
+            /*
             Stmt::FnCall(fn_call) => {
                 result.push_str(&format!("FnCall: {}", fn_call.ident));
                 for arg in &fn_call.args {
                     arg.print_inner(depth, result);
                 }
+            }
+            */
+            Stmt::Expr(expr) => {
+                result.push_str("Expr statement: ");
+                expr.print_inner(depth, result);
             }
             Stmt::ForLoop {
                 condition,
@@ -419,18 +425,22 @@ impl Stmt {
                 for stmt in &code_block.stmts {
                     stmt.print_inner(depth, result);
                 }
-            },
-            Stmt::VarOperatorAssign { ident, operator, value } => {
+            }
+            Stmt::VarOperatorAssign {
+                ident,
+                operator,
+                value,
+            } => {
                 result.push_str("VarOperatorAssign: ");
                 result.push_str(&format!("Ident: \"{}\" ", ident));
                 result.push_str(&format!("Operator: \"{}\" ", operator));
-                
+
                 //result.push_str(&create_indent(depth + 1));
                 result.push_str("Value: ");
-                
+
                 value.print_inner(depth, result);
             }
-            _ => result.push_str("ERR: Stmt not yet registered in print function"),
+            //_ => result.push_str("ERR: Stmt not yet registered in print function"),
         }
     }
 }
@@ -494,9 +504,9 @@ impl Expr {
             Expr::VariableIdent(ident) => {
                 result.push_str(&format!("VariableIdent: \"{}\"", ident));
             }
-            Expr::FnCall(fn_call) => {
-                result.push_str(&format!("FnCall: {}", fn_call.ident));
-                for arg in &fn_call.args {
+            Expr::FnCall { ident, args } => {
+                result.push_str(&format!("FnCall: {}", ident));
+                for arg in args {
                     arg.print_inner(depth, result);
                 }
             }

@@ -1,6 +1,8 @@
-use std::{iter::Peekable};
+use std::iter::Peekable;
 
-use crate::{lexer::Lexer, CodeBlock, Expr, ModuleIdentifier, Operator, Stmt, Token, TokenType, TypedVar};
+use crate::{
+    lexer::Lexer, CodeBlock, Expr, ModuleIdentifier, Stmt, Token, TokenType, TypedVar
+};
 
 #[derive(Debug)]
 pub struct ParserError {
@@ -48,7 +50,7 @@ impl<'a> Parser<'a> {
     fn current_token(&self) -> Token {
         self.current_token.clone().unwrap()
     }
-    #[track_caller]
+
     fn advance(&mut self) {
         // maybe this is useless... maybe remove in lexing step?
         if let Some(_) = self.token_stream.peek() {
@@ -66,8 +68,9 @@ impl<'a> Parser<'a> {
 
     #[deprecated]
     fn skip_tokens_of_same_type(&mut self, token_type: TokenType) {
-        let current_token_type = self.current_token.as_ref().map(|t|t.r#type);
-        if current_token_type == Some(token_type) { // current token is of type
+        let current_token_type = self.current_token.as_ref().map(|t| t.r#type);
+        if current_token_type == Some(token_type) {
+            // current token is of type
             if let Some(token) = self.token_stream.peek() {
                 if token.r#type == token_type {
                     self.advance();
@@ -176,7 +179,7 @@ impl<'a> Parser<'a> {
 
     fn parse_fn_decl(&mut self) -> Result<(), ParserError> {
         self.advance();
-        
+
         self.try_consume_token(TokenType::Ident, "Expected function identifier")?;
         let fn_ident = self.current_token().unwrap_value();
         self.try_consume_token(TokenType::OpenParen, "Expected open parenthesis")?;
@@ -255,10 +258,16 @@ impl<'a> Parser<'a> {
                         if self.matches(TokenType::OpenParen) {
                             let stmt = self.parse_fn_call(ident)?;
                             code_block.stmts.push(stmt);
-                        } else if self.matches_predicate(|parser| parser.peek().is_some_and(|token| token.is_operator())) {
+                        } else if self.matches_predicate(|parser| {
+                            parser.peek().is_some_and(|token| token.is_binary_op())
+                        }) {
                             let operator = self.current_token().r#type.try_into().unwrap();
                             let value = self.parse_expression()?;
-                            code_block.stmts.push(Stmt::VarOperatorAssign { ident, operator, value });
+                            code_block.stmts.push(Stmt::VarOperatorAssign {
+                                ident,
+                                operator,
+                                value,
+                            });
                         } else {
                             let stmt = self.parse_var_decl_assignmt()?;
                             code_block.stmts.push(stmt);
@@ -355,9 +364,11 @@ impl<'a> Parser<'a> {
     }
 
     // when this is called, the current token is the function identifier
+    // TODO: Rewrite to return expr instead
     fn parse_fn_call(&mut self, fn_ident: String) -> Result<Stmt, ParserError> {
         // parse arguments
         let mut args = Vec::new();
+        
         if !self.matches(TokenType::CloseParen) {
             loop {
                 let expr = self.parse_expression()?;
@@ -376,7 +387,7 @@ impl<'a> Parser<'a> {
             }
         }
         self.consume_line_terminator()?;
-        let stmt = Stmt::FnCall(crate::FnCall {
+        let stmt = Stmt::Expr(Expr::FnCall {
             ident: fn_ident,
             args,
         });
@@ -501,7 +512,10 @@ impl<'a> Parser<'a> {
 
     // a - b   a + b
     fn parse_term_expr(&mut self) -> ExprParseResult {
-        println!("parsing term expression (- +) {}", self.parser_state_dbg_info());
+        println!(
+            "parsing term expression (- +) {}",
+            self.parser_state_dbg_info()
+        );
         let mut expr = self.parse_factor_and_bitwise_expr()?;
         while self.matches_any(&[TokenType::Minus, TokenType::Plus]) {
             let operator = self
@@ -516,9 +530,22 @@ impl<'a> Parser<'a> {
 
     // a / b   a * b   a % b   a ~ b   a << b   a >> b   a ^ b   a | b
     fn parse_factor_and_bitwise_expr(&mut self) -> ExprParseResult {
-        println!("Parsing factor expr (/ * %) {}", self.parser_state_dbg_info());
+        println!(
+            "Parsing factor expr (/ * %) {}",
+            self.parser_state_dbg_info()
+        );
         let mut expr = self.parse_unary_expr()?;
-        while self.matches_any(&[TokenType::Slash, TokenType::Star, TokenType::Percent, TokenType::Ampersand, TokenType::Tilde, TokenType::BitShiftLeft, TokenType::BitShiftRight, TokenType::Caret, TokenType::Pipe]) {
+        while self.matches_any(&[
+            TokenType::Slash,
+            TokenType::Star,
+            TokenType::Percent,
+            TokenType::Ampersand,
+            TokenType::Tilde,
+            TokenType::BitShiftLeft,
+            TokenType::BitShiftRight,
+            TokenType::Caret,
+            TokenType::Pipe,
+        ]) {
             let operator = self
                 .current_token
                 .clone()
@@ -550,9 +577,11 @@ impl<'a> Parser<'a> {
         //dbg!(&self.current_token);
         //dbg!(&self.peek());
         if self.matches(TokenType::Ident) {
-            // todo: parse function call
+            let ident = self.current_token().unwrap_value();
+            
+            
             println!("Ok, returning variable ident expr");
-            return Ok(Expr::VariableIdent(self.current_token().unwrap_value()));
+            return Ok(Expr::VariableIdent(ident));
         }
         if self.matches(TokenType::True) {
             println!("Ok, returning boolean literal expr");
@@ -580,6 +609,41 @@ impl<'a> Parser<'a> {
         ParserError::new("Expected an expression", self.peek().cloned()).wrap()
     }
 
+    /*
+    fn parse_fn_expr(&mut self) -> ExprParseResult {
+        // parse function call
+        // cases: fn(), fn(arg0), fn(arg0, ..., argN)
+        if self.matches(TokenType::OpenParen) {
+            let mut args = Vec::with_capacity(16);
+            loop {
+                
+                
+                if self.matches(TokenType::CloseParen) {
+                    return Ok(Expr::FnCall {
+                        ident,
+                        args
+                    })
+                }
+                let arg = self.parse_expression()?;
+                args.push(arg);
+                if self.matches(TokenType::Comma) {
+                    continue;
+                } else {
+                    break;
+                }
+            }
+            if self.matches(TokenType::CloseParen) {
+                return Ok(Expr::FnCall {
+                    ident,
+                    args
+                })
+            } else {
+                return ParserError::new("Expected closed parenthesis \')\'", self.peek().cloned()).wrap();
+            }
+        }
+        Ok(())
+    }
+    */
     // :Utils
     /// checks if next token is of one of the given types, then moves on to that token
     fn matches_any(&mut self, tokens: &[TokenType]) -> bool {
@@ -597,8 +661,11 @@ impl<'a> Parser<'a> {
         }
         false
     }
-    
-    fn matches_predicate<P>(&mut self, predicate: P) -> bool where P: FnOnce(&mut Parser) -> bool {
+
+    fn matches_predicate<P>(&mut self, predicate: P) -> bool
+    where
+        P: FnOnce(&mut Parser) -> bool,
+    {
         if predicate(self) {
             self.advance();
             return true;
@@ -643,16 +710,16 @@ impl<'a> Parser<'a> {
         }
         Err(ParserError::new(msg, self.peek().cloned()))
     }
-    
+
     fn parser_state_dbg_info(&mut self) -> String {
         let current = self.current_token();
         let line = current.location.line;
         let col = current.location.column;
         let r#type = current.r#type;
         let mut str = String::new();
-        
-        str.push_str(&format!("Current: \"{}\", loc: {}:{}", r#type, line, col)); 
-        
+
+        str.push_str(&format!("Current: \"{}\", loc: {}:{}", r#type, line, col));
+
         if let Some(next) = self.peek() {
             let line = next.location.line;
             let col = next.location.column;
