@@ -1,7 +1,9 @@
 use std::iter::Peekable;
 use std::str::Chars;
 
-use crate::{CodeLocation, Token, TokenType};
+use moc_common::error::{LexerError, LexerResult};
+use moc_common::token::{Token, TokenType};
+use moc_common::CodeLocation;
 
 #[derive(Clone)]
 pub struct Lexer<'a> {
@@ -13,19 +15,9 @@ impl<'a> Iterator for Lexer<'a> {
     type Item = Token;
     
     fn next(&mut self) -> Option<Self::Item> {
-        self.next_token().ok()
+        self.next_token().ok() // discards error... :/ when peeking char, the lexer error is just discarded
     }
 }
-
-#[derive(Debug)]
-pub enum LexerError {
-    UnterminatedStringLiteral(CodeLocation),
-    InvalidCharacter(char),
-    UnknownEscapeCharacter,
-    UnknownToken,
-}
-
-type LexerResult = Result<Token, LexerError>;
 
 
 impl<'a> Lexer<'a> {
@@ -36,7 +28,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn line_break(&mut self) {
+    fn count_line_break(&mut self) {
         self.location.column = 1;
         self.location.line += 1;
     }
@@ -58,7 +50,7 @@ impl<'a> Lexer<'a> {
         self.advance();
         if self.peek_char() == Some('\n') {
             self.advance();
-            self.line_break();
+            self.count_line_break();
             return Some(Token::new(TokenType::LineBreak, self.location));
         }
         None
@@ -66,7 +58,7 @@ impl<'a> Lexer<'a> {
 
     fn lex_lf(&mut self) -> Token {
         self.advance();
-        self.line_break();
+        self.count_line_break();
         Token::new(TokenType::LineBreak, self.location)
     }
 

@@ -1,0 +1,8 @@
+[package]
+name = "moc-main"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+moc-parser ={ path = "../moc-parser"}
+moc-common = { path = "../moc-common"}

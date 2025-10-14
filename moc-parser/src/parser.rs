@@ -1,31 +1,11 @@
 use std::iter::Peekable;
 
-use crate::{
-    lexer::Lexer, CodeBlock, Expr, ModuleIdentifier, Stmt, Token, TokenType, TypedVar
+use moc_common::{
+    error::{ExprParseResult, ParseResult, ParserError}, expr::Expr, stmt::Stmt, token::{Token, TokenType}, CodeBlock, ModuleIdentifier, TypedVar
 };
 
-#[derive(Debug)]
-pub struct ParserError {
-    pub msg: String,
-    pub last_token: Option<Token>,
-}
+use crate::lexer::Lexer;
 
-impl ParserError {
-    fn new(msg: &str, last_token: Option<Token>) -> Self {
-        Self {
-            msg: msg.into(),
-            last_token,
-        }
-    }
-
-    fn wrap<T>(self) -> Result<T, ParserError> {
-        Err(self)
-    }
-}
-
-pub type ParseResult = Result<Vec<Stmt>, ParserError>;
-
-pub type ExprParseResult = Result<Expr, ParserError>;
 pub struct Parser<'a> {
     token_stream: Peekable<Lexer<'a>>,
     current_token: Option<Token>,
@@ -368,7 +348,7 @@ impl<'a> Parser<'a> {
     fn parse_fn_call(&mut self, fn_ident: String) -> Result<Stmt, ParserError> {
         // parse arguments
         let mut args = Vec::new();
-        
+
         if !self.matches(TokenType::CloseParen) {
             loop {
                 let expr = self.parse_expression()?;
@@ -578,8 +558,7 @@ impl<'a> Parser<'a> {
         //dbg!(&self.peek());
         if self.matches(TokenType::Ident) {
             let ident = self.current_token().unwrap_value();
-            
-            
+
             println!("Ok, returning variable ident expr");
             return Ok(Expr::VariableIdent(ident));
         }
@@ -616,8 +595,6 @@ impl<'a> Parser<'a> {
         if self.matches(TokenType::OpenParen) {
             let mut args = Vec::with_capacity(16);
             loop {
-                
-                
                 if self.matches(TokenType::CloseParen) {
                     return Ok(Expr::FnCall {
                         ident,
