@@ -2,6 +2,7 @@ use std::fmt::Display;
 
 use crate::{debug_utils::create_indent, expr::Expr, BinaryOp, CodeBlock, ModuleIdentifier, TypedVar};
 
+#[derive(Clone)]
 pub enum Stmt {
     Print(Expr), // probably dont wanna have this as inbuilt function
     // Int32 a (declaring variable)

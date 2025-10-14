@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use derive_more::Display;
 
 use crate::{BinaryOp, CodeLocation};
@@ -9,6 +11,15 @@ pub struct Token {
     pub location: CodeLocation,
 }
 
+impl Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(value) = self.value() {
+            write!(f, "{} at {}, value: \"{}\"", self.r#type, self.location, value)
+        } else {
+            write!(f, "{} at {}", self.r#type, self.location)
+        }
+    }
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Display)]
 pub enum TokenType {
     AddAssign,           // +=

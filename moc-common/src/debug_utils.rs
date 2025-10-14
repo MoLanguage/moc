@@ -2,7 +2,7 @@ use crate::token::{Token, TokenType};
 
 pub fn print_tokens(tokens: &[Token]) {
     for token in tokens {
-        dbg!(&token);
+        println!("{}", token);
         if token.r#type == TokenType::EndOfFile {
             break;
         }

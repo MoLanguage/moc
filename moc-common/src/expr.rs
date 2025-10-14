@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use crate::{debug_utils::{create_indent}, token::Token};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     // Expressions
     Binary {

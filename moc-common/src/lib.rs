@@ -22,6 +22,13 @@ impl Default for CodeLocation {
     }
 }
 
+impl Display for CodeLocation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}:{}", self.line, self.column))
+    }
+}
+
+#[derive(Clone)]
 pub struct CodeBlock {
     pub stmts: Vec<Stmt>,
 }
@@ -32,6 +39,7 @@ impl CodeBlock {
     }
 }
 
+#[derive(Clone)]
 pub struct ModuleIdentifier(pub Vec<String>);
 
 impl ModuleIdentifier {
@@ -66,7 +74,7 @@ pub enum BinaryOp {
     BitNot,        // Bitwise NOT
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TypedVar {
     /// the type identifier
     type_ident: String,

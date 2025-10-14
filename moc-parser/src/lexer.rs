@@ -12,13 +12,12 @@ pub struct Lexer<'a> {
 }
 
 impl<'a> Iterator for Lexer<'a> {
-    type Item = Token;
+    type Item = LexerResult;
     
     fn next(&mut self) -> Option<Self::Item> {
-        self.next_token().ok() // discards error... :/ when peeking char, the lexer error is just discarded
+        Some(self.next_token()) // discards error... :/ when peeking char, the lexer error is just discarded
     }
 }
-
 
 impl<'a> Lexer<'a> {
     pub fn new(input: &'a str) -> Self {
@@ -26,6 +25,17 @@ impl<'a> Lexer<'a> {
             chars: input.chars().peekable(),
             location: CodeLocation::default(),
         }
+    }
+    
+    pub fn tokens(mut self) -> Vec<Token> {
+        let mut tokens = Vec::with_capacity(256);
+        while let Ok(token) = self.next_token() {
+            if token.r#type == TokenType::EndOfFile {
+                break;
+            }
+            tokens.push(token);
+        }
+        tokens
     }
 
     fn count_line_break(&mut self) {

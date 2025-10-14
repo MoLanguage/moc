@@ -1,21 +1,20 @@
-use std::iter::Peekable;
+use std::{iter::Peekable, vec::IntoIter};
 
+use log::debug;
 use moc_common::{
     error::{ExprParseResult, ParseResult, ParserError}, expr::Expr, stmt::Stmt, token::{Token, TokenType}, CodeBlock, ModuleIdentifier, TypedVar
 };
 
-use crate::lexer::Lexer;
-
-pub struct Parser<'a> {
-    token_stream: Peekable<Lexer<'a>>,
+pub struct Parser {
+    token_stream: Peekable<IntoIter<Token>>,
     current_token: Option<Token>,
     stmts: Vec<Stmt>,
 }
 
-impl<'a> Parser<'a> {
-    pub fn new(lexer: Lexer<'a>) -> Self {
+impl Parser {
+    pub fn new(tokens: Vec<Token>) -> Self {
         let parser = Self {
-            token_stream: lexer.peekable(),
+            token_stream: tokens.into_iter().peekable(),
             current_token: None,
             stmts: Vec::new(),
         };
@@ -36,7 +35,7 @@ impl<'a> Parser<'a> {
         if let Some(_) = self.token_stream.peek() {
             //dbg!(std::panic::Location::caller());
             if let Some(current_token) = &self.current_token {
-                println!("advancing from {}", current_token.r#type);
+               debug!("advancing from {}", current_token.r#type);
             }
             self.current_token = self.token_stream.next();
 
@@ -207,7 +206,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_code_block(&mut self) -> Result<CodeBlock, ParserError> {
-        println!("parsing code block");
+        //println!("parsing code block");
         self.try_consume_token(TokenType::OpenBrace, "Expected open brace")?;
         self.skip_tokens_of_same_type(TokenType::LineBreak); // move on if there's a linebreak.
 
@@ -451,13 +450,13 @@ impl<'a> Parser<'a> {
     // :Expressions
 
     fn parse_expression(&mut self) -> ExprParseResult {
-        println!("parsing expression {}", self.parser_state_dbg_info());
+        debug!("parsing expression {}", self.parser_state_dbg_info());
         self.parse_equality_expr()
     }
 
     // a != b   a == b
     fn parse_equality_expr(&mut self) -> ExprParseResult {
-        println!("parsing equality expr {}", self.parser_state_dbg_info());
+        debug!("parsing equality expr {}", self.parser_state_dbg_info());
 
         let mut expr = self.parse_comparison_expr()?;
         if self.matches_any(&[TokenType::NotEqualTo, TokenType::EqualTo]) {
@@ -471,7 +470,8 @@ impl<'a> Parser<'a> {
 
     // a > b   a >= b   a < b   a <= b
     fn parse_comparison_expr(&mut self) -> ExprParseResult {
-        println!("parsing comparison expr {}", self.parser_state_dbg_info());
+        debug!("parsing comparison expr {}", self.parser_state_dbg_info());
+        
         let mut expr = self.parse_term_expr()?;
         let tokens = &[
             TokenType::Greater,
@@ -492,10 +492,7 @@ impl<'a> Parser<'a> {
 
     // a - b   a + b
     fn parse_term_expr(&mut self) -> ExprParseResult {
-        println!(
-            "parsing term expression (- +) {}",
-            self.parser_state_dbg_info()
-        );
+        debug!("parsing term expression (- +) {}", self.parser_state_dbg_info());
         let mut expr = self.parse_factor_and_bitwise_expr()?;
         while self.matches_any(&[TokenType::Minus, TokenType::Plus]) {
             let operator = self
@@ -510,10 +507,7 @@ impl<'a> Parser<'a> {
 
     // a / b   a * b   a % b   a ~ b   a << b   a >> b   a ^ b   a | b
     fn parse_factor_and_bitwise_expr(&mut self) -> ExprParseResult {
-        println!(
-            "Parsing factor expr (/ * %) {}",
-            self.parser_state_dbg_info()
-        );
+        debug!("Parsing factor expr (/ * %) {}", self.parser_state_dbg_info());
         let mut expr = self.parse_unary_expr()?;
         while self.matches_any(&[
             TokenType::Slash,
@@ -539,7 +533,7 @@ impl<'a> Parser<'a> {
 
     // !a   -a
     fn parse_unary_expr(&mut self) -> ExprParseResult {
-        println!("parsing unary expr {}", self.parser_state_dbg_info());
+        debug!("parsing unary expr {}", self.parser_state_dbg_info());
         if self.matches_any(&[TokenType::Excl, TokenType::Minus]) {
             let operator = self
                 .current_token
@@ -553,35 +547,35 @@ impl<'a> Parser<'a> {
     }
     // literals, variables and function calls
     fn parse_primary_expr(&mut self) -> ExprParseResult {
-        println!("parsing primary expr {}", self.parser_state_dbg_info());
+        debug!("parsing primary expr {}", self.parser_state_dbg_info());
         //dbg!(&self.current_token);
         //dbg!(&self.peek());
         if self.matches(TokenType::Ident) {
             let ident = self.current_token().unwrap_value();
 
-            println!("Ok, returning variable ident expr");
+            debug!("Ok, returning variable ident expr");
             return Ok(Expr::VariableIdent(ident));
         }
         if self.matches(TokenType::True) {
-            println!("Ok, returning boolean literal expr");
+            debug!("Ok, returning boolean literal expr");
             return Ok(Expr::BoolLiteral(true));
         }
         if self.matches(TokenType::False) {
-            println!("Ok, returning boolean literal expr");
+            debug!("Ok, returning boolean literal expr");
             return Ok(Expr::BoolLiteral(false));
         }
         if self.matches(TokenType::StringLiteral) {
-            println!("Ok, returning string literal expr");
+            debug!("Ok, returning string literal expr");
             return Ok(Expr::StringLiteral(self.current_token().unwrap_value()));
         }
         if self.matches(TokenType::NumberLiteral) {
-            println!("Ok, returning number literal expr");
+            debug!("Ok, returning number literal expr");
             return Ok(Expr::NumberLiteral(self.current_token().unwrap_value()));
         }
         if self.matches(TokenType::OpenParen) {
             let expr = self.parse_expression()?;
             self.try_consume_token(TokenType::CloseParen, "Expected '(' after expression.")?;
-            println!("Ok, returning grouping expr");
+            debug!("Ok, returning grouping expr");
             return Ok(Expr::Grouping(Box::new(expr)));
         }
 
