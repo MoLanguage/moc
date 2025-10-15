@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::{CodeBlock, ModuleIdentifier, TypedVar};
+use crate::{debug_utils::create_indent, CodeBlock, ModuleIdentifier, TypedVar};
 
 #[derive(Debug, Clone)]
 pub enum Decl {
@@ -67,8 +67,8 @@ impl Decl {
                 result.push_str(&format!("StructDecl: {}", ident));
                 for field_decl in body {
                     result.push_str(&format!(
-                        "{:?} \"{}\"",
-                        field_decl.type_ident, field_decl.ident
+                        "{}{:?} \"{}\"",
+                        create_indent(depth + 1), field_decl.type_ident, field_decl.ident
                     ));
                 }
             }

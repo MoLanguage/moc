@@ -11,5 +11,5 @@ pub fn print_tokens(tokens: &[Token]) {
 
 pub const INDENT: &str = "  ";
 pub fn create_indent(depth: usize) -> String {
-    format!("{}{}", "\n", INDENT.repeat(depth))
+    format!("\n{}", INDENT.repeat(depth))
 }

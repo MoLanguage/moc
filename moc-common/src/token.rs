@@ -139,6 +139,19 @@ impl Token {
     pub fn is_binary_op(&self) -> bool {
         TryInto::<BinaryOp>::try_into(self.r#type).is_ok()
     }
+    
+    pub fn is_of_type(&self, r#type: TokenType) -> bool {
+        self.r#type == r#type
+    }
+    
+    pub fn is_of_types(&self, types: &[TokenType]) -> bool {
+        for r#type in types {
+            if self.is_of_type(*r#type) {
+                return true;
+            }
+        }
+        false
+    }
 }
 
 #[derive(Debug)]
@@ -162,5 +175,18 @@ impl TryFrom<TokenType> for BinaryOp {
             }
             _ => Err(NonOperatorTokenError),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn is_of_type_s() {
+        let token = Token::new(TokenType::Plus, CodeLocation::default());
+        assert!(token.is_of_type(TokenType::Plus));
+        assert!(token.is_of_types(&[TokenType::Plus, TokenType::Minus]));
+        assert!(token.is_of_types(&[TokenType::Minus, TokenType::Plus]));
     }
 }

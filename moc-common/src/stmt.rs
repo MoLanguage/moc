@@ -6,7 +6,7 @@ use crate::{debug_utils::create_indent, expr::Expr, BinaryOp, CodeBlock};
 pub enum Stmt {
     Print(Expr), // probably dont wanna have this as inbuilt function
     // Int32 a (declaring variable)
-    VarDecl {
+    LocalVarDecl {
         type_ident: String,
         var_ident: String,
     },
@@ -57,7 +57,7 @@ impl Stmt {
                 result.push_str("Print");
                 astnode.print_inner(depth, result);
             }
-            Stmt::VarDecl {
+            Stmt::LocalVarDecl {
                 type_ident,
                 var_ident,
             } => {
