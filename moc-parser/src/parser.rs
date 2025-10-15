@@ -73,12 +73,12 @@ impl Parser {
 
     pub fn parse(mut self) -> ParseResult {
         let borrowed = &mut self;
-        borrowed.parse_top_level_stmts()?;
+        borrowed.parse_top_level_decls()?;
         Ok(self.decls)
     }
 
-    /// Parses the top level statements that are in a .mo code file also called "Items".
-    fn parse_top_level_stmts(&mut self) -> Result<(), ParserError> {
+    /// Parses the top level declarations within .mo files that declare items.
+    fn parse_top_level_decls(&mut self) -> Result<(), ParserError> {
         while let Some(token) = self.peek() {
             match token.r#type {
                 TokenType::Use => {
@@ -100,7 +100,7 @@ impl Parser {
                 }
                 _ => {
                     return Err(ParserError::new(
-                        "Unexpected token parsing top-level statements",
+                        "Unexpected token parsing top-level declarations",
                         Some(token.clone()),
                     ));
                 }
