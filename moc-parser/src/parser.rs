@@ -2,13 +2,19 @@ use std::{iter::Peekable, vec::IntoIter};
 
 use log::debug;
 use moc_common::{
-    ast::Ast, decl::Decl, error::{ExprParseResult, ParseResult, ParserError}, expr::Expr, stmt::Stmt, token::{Token, TokenType}, CodeBlock, ModuleIdentifier, TypedVar
+    CodeBlock, ModuleIdentifier, TypedVar,
+    ast::Ast,
+    decl::Decl,
+    error::{ExprParseResult, ParseResult, ParserError},
+    expr::Expr,
+    stmt::Stmt,
+    token::{Token, TokenType},
 };
 
 pub struct Parser {
     token_stream: Peekable<IntoIter<Token>>,
     current_token: Option<Token>,
-    decls: Vec<Decl>,
+    ast: Ast,
 }
 
 impl Parser {
@@ -16,7 +22,7 @@ impl Parser {
         let parser = Self {
             token_stream: tokens.into_iter().peekable(),
             current_token: None,
-            decls: Ast::new(),
+            ast: Ast::new(),
         };
         parser
     }
@@ -30,12 +36,13 @@ impl Parser {
         self.current_token.clone().unwrap()
     }
 
+    #[track_caller]
     fn advance(&mut self) {
         // maybe this is useless... maybe remove in lexing step?
         if let Some(_) = self.token_stream.peek() {
-            //dbg!(std::panic::Location::caller());
             if let Some(current_token) = &self.current_token {
-               debug!("advancing from {}", current_token.r#type);
+                debug!("{:?}", std::panic::Location::caller());
+                debug!("advancing from {}", current_token.r#type);
             }
             self.current_token = self.token_stream.next();
 
@@ -45,36 +52,37 @@ impl Parser {
         }
     }
 
-    #[deprecated]
     fn skip_tokens_of_same_type(&mut self, token_type: TokenType) {
         let current_token_type = self.current_token.as_ref().map(|t| t.r#type);
         if current_token_type == Some(token_type) {
             // current token is of type
-            if let Some(token) = self.token_stream.peek() {
-                if token.r#type == token_type {
-                    self.advance();
+            loop {
+                if let Some(token) = self.peek() {
+                    if token.r#type == token_type {
+                        debug!("Skipping token: {}", token);
+                        self.advance();
+                    } else {
+                        break;
+                    }
                 }
             }
         }
     }
 
     fn peek(&mut self) -> Option<&Token> {
-        match self.token_stream.peek() {
-            Some(token) => {
-                if token.r#type == TokenType::EndOfFile {
-                    None
-                } else {
-                    Some(token)
-                }
+        self.token_stream.peek().and_then(|token| {
+            if token.r#type == TokenType::EndOfFile {
+                None
+            } else {
+                Some(token)
             }
-            None => None,
-        }
+        })
     }
 
     pub fn parse(mut self) -> ParseResult {
         let borrowed = &mut self;
         borrowed.parse_top_level_decls()?;
-        Ok(self.decls)
+        Ok(self.ast)
     }
 
     /// Parses the top level declarations within .mo files that declare items.
@@ -151,7 +159,7 @@ impl Parser {
                 module_alias: None,
             };
         }
-        self.decls.push(stmt);
+        self.ast.push(stmt);
 
         Ok(())
     }
@@ -195,7 +203,7 @@ impl Parser {
         }
         // parse body / code
         let body = self.parse_code_block()?;
-        self.decls.push(Decl::Fn {
+        self.ast.push(Decl::Fn {
             ident: fn_ident,
             params,
             return_type,
@@ -205,9 +213,13 @@ impl Parser {
         Ok(())
     }
 
+    // TODO:
+    // if is statement (switch or match)
+    // for in
     fn parse_code_block(&mut self) -> Result<CodeBlock, ParserError> {
-        //println!("parsing code block");
+        debug!("parsing code block");
         self.try_consume_token(TokenType::OpenBrace, "Expected open brace")?;
+
         self.skip_tokens_of_same_type(TokenType::LineBreak); // move on if there's a linebreak.
 
         // what can we expect within a code block?
@@ -275,14 +287,6 @@ impl Parser {
                 break;
             }
         }
-
-        // DONE Variable Decl
-        // if(-else) statement
-        // if is statement (switch or match)
-        // loops
-        // function call
-        // return statement
-
         Ok(code_block)
     }
 
@@ -471,7 +475,7 @@ impl Parser {
     // a > b   a >= b   a < b   a <= b
     fn parse_comparison_expr(&mut self) -> ExprParseResult {
         debug!("parsing comparison expr {}", self.parser_state_dbg_info());
-        
+
         let mut expr = self.parse_term_expr()?;
         let tokens = &[
             TokenType::Greater,
@@ -492,7 +496,10 @@ impl Parser {
 
     // a - b   a + b
     fn parse_term_expr(&mut self) -> ExprParseResult {
-        debug!("parsing term expression (- +) {}", self.parser_state_dbg_info());
+        debug!(
+            "parsing term expression (- +) {}",
+            self.parser_state_dbg_info()
+        );
         let mut expr = self.parse_factor_and_bitwise_expr()?;
         while self.matches_any(&[TokenType::Minus, TokenType::Plus]) {
             let operator = self
@@ -507,7 +514,10 @@ impl Parser {
 
     // a / b   a * b   a % b   a ~ b   a << b   a >> b   a ^ b   a | b
     fn parse_factor_and_bitwise_expr(&mut self) -> ExprParseResult {
-        debug!("Parsing factor expr (/ * %) {}", self.parser_state_dbg_info());
+        debug!(
+            "Parsing factor expr (/ * %) {}",
+            self.parser_state_dbg_info()
+        );
         let mut expr = self.parse_unary_expr()?;
         while self.matches_any(&[
             TokenType::Slash,
