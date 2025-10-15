@@ -48,9 +48,20 @@ impl ModuleIdentifier {
     pub fn new(module_path: Vec<String>) -> Self {
         ModuleIdentifier(module_path)
     }
-    
+
     pub fn from_slice(module_path: &[String]) -> Self {
         ModuleIdentifier(module_path.iter().cloned().collect())
+    }
+
+    /// Like for example: "mod:submod:my_function" will yield a ModuleIdentifier with dirs: mod:submod
+    pub fn from_qualified_item_identifier(ident: &str) -> Self {
+        let dirs: Vec<String> = ident.split_terminator(":").map(|path_dir| path_dir.to_string()).collect();
+        let dirs = &dirs[0..dirs.len()-1]; // cut off non-module identifier part
+        ModuleIdentifier(dirs.iter().cloned().collect())
+    }
+    pub fn from_string(ident: &str) -> Self {
+        let dirs = ident.split_terminator(":").map(|path_dir| path_dir.to_string()).collect();
+        ModuleIdentifier(dirs)
     }
 }
 
