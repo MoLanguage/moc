@@ -2,6 +2,7 @@ use std::io;
 
 use crate::{expr::Expr, stmt::Stmt, token::Token, CodeLocation};
 
+// TODO: decide how to unify errors with CodeLocations, so they can be displayed in error messages properly
 pub enum CompilerError {
     ParserError(ParserError),
     LexerError(LexerError),
