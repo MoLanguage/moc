@@ -1,6 +1,6 @@
 use std::io;
 
-use crate::{expr::Expr, stmt::Stmt, token::Token, CodeLocation};
+use crate::{ast::Ast, expr::Expr, token::Token, CodeLocation};
 
 // TODO: decide how to unify errors with CodeLocations, so they can be displayed in error messages properly
 pub enum CompilerError {
@@ -18,7 +18,7 @@ pub enum LexerError {
 }
 
 pub type LexerResult = Result<Token, LexerError>;
-pub type ParseResult = Result<Vec<Stmt>, ParserError>;
+pub type ParseResult = Result<Ast, ParserError>;
 pub type ExprParseResult = Result<Expr, ParserError>;
 
 #[derive(Debug)]

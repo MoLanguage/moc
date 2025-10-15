@@ -1,8 +1,10 @@
 pub mod error;
 pub mod token;
-pub mod expr;
 pub mod debug_utils;
+pub mod decl;
 pub mod stmt;
+pub mod expr;
+pub mod ast;
 
 use std::fmt::{Debug, Display};
 
@@ -28,7 +30,7 @@ impl Display for CodeLocation {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct CodeBlock {
     pub stmts: Vec<Stmt>,
 }
@@ -39,7 +41,7 @@ impl CodeBlock {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ModuleIdentifier(pub Vec<String>);
 
 impl ModuleIdentifier {

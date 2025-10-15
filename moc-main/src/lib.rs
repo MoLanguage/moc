@@ -1,11 +1,11 @@
 use std::{fs::File, io::Read, path::Path};
 
-use moc_common::{error::CompilerError, stmt::Stmt, token::Token};
+use moc_common::{ast::Ast, error::CompilerError, token::Token};
 use moc_parser::{lexer::Lexer, parser::Parser};
 
 pub struct CompileResultMetaData {
     pub tokens: Option<Vec<Token>>,
-    pub ast: Option<Vec<Stmt>>,
+    pub ast: Option<Ast>,
 }
 
 impl CompileResultMetaData {

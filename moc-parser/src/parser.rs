@@ -2,13 +2,13 @@ use std::{iter::Peekable, vec::IntoIter};
 
 use log::debug;
 use moc_common::{
-    error::{ExprParseResult, ParseResult, ParserError}, expr::Expr, stmt::Stmt, token::{Token, TokenType}, CodeBlock, ModuleIdentifier, TypedVar
+    ast::Ast, decl::Decl, error::{ExprParseResult, ParseResult, ParserError}, expr::Expr, stmt::Stmt, token::{Token, TokenType}, CodeBlock, ModuleIdentifier, TypedVar
 };
 
 pub struct Parser {
     token_stream: Peekable<IntoIter<Token>>,
     current_token: Option<Token>,
-    stmts: Vec<Stmt>,
+    decls: Vec<Decl>,
 }
 
 impl Parser {
@@ -16,7 +16,7 @@ impl Parser {
         let parser = Self {
             token_stream: tokens.into_iter().peekable(),
             current_token: None,
-            stmts: Vec::new(),
+            decls: Ast::new(),
         };
         parser
     }
@@ -74,7 +74,7 @@ impl Parser {
     pub fn parse(mut self) -> ParseResult {
         let borrowed = &mut self;
         borrowed.parse_top_level_stmts()?;
-        Ok(self.stmts)
+        Ok(self.decls)
     }
 
     /// Parses the top level statements that are in a .mo code file also called "Items".
@@ -141,17 +141,17 @@ impl Parser {
         let identifier = self.parse_module_identifier()?;
         let stmt;
         if self.matches(TokenType::StringLiteral) {
-            stmt = Stmt::UseDecl {
+            stmt = Decl::Use {
                 module_ident: identifier,
                 module_alias: Some(self.current_token().unwrap_value()),
             };
         } else {
-            stmt = Stmt::UseDecl {
+            stmt = Decl::Use {
                 module_ident: identifier,
                 module_alias: None,
             };
         }
-        self.stmts.push(stmt);
+        self.decls.push(stmt);
 
         Ok(())
     }
@@ -195,7 +195,7 @@ impl Parser {
         }
         // parse body / code
         let body = self.parse_code_block()?;
-        self.stmts.push(Stmt::FnDecl {
+        self.decls.push(Decl::Fn {
             ident: fn_ident,
             params,
             return_type,
@@ -419,8 +419,8 @@ impl Parser {
     unit struct:
     struct Foo {}
      */
-    fn parse_struct_decl(&mut self) -> Result<Stmt, ParserError> {
-        let stmt;
+    fn parse_struct_decl(&mut self) -> Result<Decl, ParserError> {
+        let decl;
         self.advance();
         self.try_consume_token(TokenType::Ident, "Expected struct identifier")?;
         let struct_ident = self.current_token().unwrap_value();
@@ -440,11 +440,11 @@ impl Parser {
                 "Expected line break or ;",
             )?;
         }
-        stmt = Stmt::StructDecl {
+        decl = Decl::Struct {
             ident: struct_ident,
             fields,
         };
-        Ok(stmt)
+        Ok(decl)
     }
 
     // :Expressions
