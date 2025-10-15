@@ -55,7 +55,7 @@ impl Stmt {
         match self {
             Stmt::Print(astnode) => {
                 result.push_str("Print");
-                astnode.print_inner(depth, result);
+                astnode.display_inner(depth, result);
             }
             Stmt::LocalVarDecl {
                 type_ident,
@@ -72,11 +72,13 @@ impl Stmt {
                 else_block,
             } => {
                 result.push_str("If: ");
-                condition.print_inner(depth, result);
+                condition.display_inner(depth, result);
                 for if_block_stmt in &if_block.stmts {
                     if_block_stmt.display_inner(depth, result);
                 }
                 if let Some(else_block) = else_block {
+                    result.push_str(&create_indent(depth));
+                    result.push_str("Else: ");
                     for else_block_stmt in &else_block.stmts {
                         else_block_stmt.display_inner(depth, result);
                     }
@@ -84,11 +86,11 @@ impl Stmt {
             }
             Stmt::Ret(expr) => {
                 result.push_str("Ret: ");
-                expr.print_inner(depth, result);
+                expr.display_inner(depth, result);
             }
             Stmt::VarAssign { ident, value } => {
                 result.push_str(&format!("VarAssign \"{}\"", ident));
-                value.print_inner(depth, result);
+                value.display_inner(depth, result);
             }
             Stmt::VarDeclAssign {
                 type_ident,
@@ -99,7 +101,7 @@ impl Stmt {
                 if let Some(type_ident) = type_ident {
                     result.push_str(&format!(" {}", type_ident));
                 }
-                value.print_inner(depth, result);
+                value.display_inner(depth, result);
             }
             /*
             Stmt::FnCall(fn_call) => {
@@ -111,14 +113,14 @@ impl Stmt {
             */
             Stmt::Expr(expr) => {
                 result.push_str("Expr statement: ");
-                expr.print_inner(depth, result);
+                expr.display_inner(depth, result);
             }
             Stmt::ForLoop {
                 condition,
                 code_block,
             } => {
                 result.push_str("ForLoop: ");
-                condition.print_inner(depth, result);
+                condition.display_inner(depth, result);
                 for stmt in &code_block.stmts {
                     stmt.display_inner(depth, result);
                 }
@@ -135,7 +137,7 @@ impl Stmt {
                 //result.push_str(&create_indent(depth + 1));
                 result.push_str("Value: ");
 
-                value.print_inner(depth, result);
+                value.display_inner(depth, result);
             }
             //_ => result.push_str("ERR: Stmt not yet registered in print function"),
         }

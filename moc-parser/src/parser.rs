@@ -42,9 +42,9 @@ impl Parser {
 
     #[track_caller]
     fn advance(&mut self) {
-        // maybe this is useless... maybe remove in lexing step?
-
         self.current_token = self.token_stream.next();
+        
+        // Debug info:
         if let Some(current_token) = self.current_token() {
             if let Some(peeked_token) = self.token_stream.peek().cloned() {
                 debug!(
@@ -54,9 +54,6 @@ impl Parser {
                     peeked_token.r#type
                 );
             }
-            // if current token is a line break and the before token was a line break, skip it.
-            //self.skip_tokens_of_same_type(TokenType::LineBreak);
-            //self.skip_tokens_of_same_type(TokenType::Semicolon);
         }
     }
 
@@ -460,7 +457,7 @@ impl Parser {
             self.try_consume_token(TokenType::Ident, "Expected variable identifier")?;
             let var_ident = self.unwrap_current_token().unwrap_value();
             fields.push(TypedVar::new(type_ident, var_ident));
-            self.consume_line_terminator()?;
+            self.try_consume_token2(&[TokenType::LineBreak, TokenType::Comma], "Expected comma ',' or linebreak")?;
         }
         decl = Decl::Struct {
             ident: struct_ident,
@@ -618,39 +615,6 @@ impl Parser {
         ParserError::new("Expected an expression", self.peek().cloned()).wrap()
     }
 
-    /*
-    fn parse_fn_expr(&mut self) -> ExprParseResult {
-        // parse function call
-        // cases: fn(), fn(arg0), fn(arg0, ..., argN)
-        if self.matches(TokenType::OpenParen) {
-            let mut args = Vec::with_capacity(16);
-            loop {
-                if self.matches(TokenType::CloseParen) {
-                    return Ok(Expr::FnCall {
-                        ident,
-                        args
-                    })
-                }
-                let arg = self.parse_expression()?;
-                args.push(arg);
-                if self.matches(TokenType::Comma) {
-                    continue;
-                } else {
-                    break;
-                }
-            }
-            if self.matches(TokenType::CloseParen) {
-                return Ok(Expr::FnCall {
-                    ident,
-                    args
-                })
-            } else {
-                return ParserError::new("Expected closed parenthesis \')\'", self.peek().cloned()).wrap();
-            }
-        }
-        Ok(())
-    }
-    */
     // :Utils
     /// checks if next token is of one of the given types, then moves on to that token
     fn matches_any(&mut self, tokens: &[TokenType]) -> bool {

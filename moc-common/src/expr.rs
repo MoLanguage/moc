@@ -42,13 +42,13 @@ impl Expr {
         Self::Unary(operator, Box::new(right))
     }
 
-    fn print(&self) -> String {
+    fn display(&self) -> String {
         let mut s = String::new();
-        self.print_inner(0, &mut s);
+        self.display_inner(0, &mut s);
         return s;
     }
 
-    pub fn print_inner(&self, depth: usize, result: &mut String) {
+    pub fn display_inner(&self, depth: usize, result: &mut String) {
         let depth = depth + 1;
         result.push_str(&create_indent(depth));
         match self {
@@ -69,13 +69,13 @@ impl Expr {
                 right_expr,
             } => {
                 result.push_str(&format!("Binary: {:?}", operator.r#type));
-                left_expr.print_inner(depth, result);
-                right_expr.print_inner(depth, result);
+                left_expr.display_inner(depth, result);
+                right_expr.display_inner(depth, result);
             }
             Expr::BoolLiteral(bool) => result.push_str(&bool.to_string()),
             Expr::Grouping(astnode) => {
                 result.push_str("Grouping: ");
-                astnode.print_inner(depth, result);
+                astnode.display_inner(depth, result);
             }
             Expr::VariableIdent(ident) => {
                 result.push_str(&format!("VariableIdent: \"{}\"", ident));
@@ -83,7 +83,7 @@ impl Expr {
             Expr::FnCall { ident, args } => {
                 result.push_str(&format!("FnCall: {}", ident));
                 for arg in args {
-                    arg.print_inner(depth, result);
+                    arg.display_inner(depth, result);
                 }
             }
             /* Expr::If { condition, if_block, else_block } => {
@@ -101,7 +101,7 @@ impl Expr {
             Expr::Loop(astnodes) => {
                 result.push_str("Loop");
                 for stmt in astnodes {
-                    stmt.print_inner(depth, result);
+                    stmt.display_inner(depth, result);
                 }
             }
             Expr::NumberLiteral(num) => {
@@ -112,7 +112,7 @@ impl Expr {
             }
             Expr::Unary(op, astnode) => {
                 result.push_str(&format!("Unary: {:?}", op));
-                astnode.print_inner(depth, result);
+                astnode.display_inner(depth, result);
             }
             /* Expr::UseDecl {
                 module_ident,
@@ -147,6 +147,6 @@ impl Expr {
 
 impl Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.print())
+        f.write_str(&self.display())
     }
 }
