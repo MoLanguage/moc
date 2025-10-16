@@ -5,13 +5,13 @@ use crate::{debug_utils::create_indent, expr::Expr, BinaryOp, CodeBlock};
 #[derive(Clone, Debug)]
 pub enum Stmt {
     Print(Expr), // probably dont wanna have this as inbuilt function
-    // Int32 a (declaring variable)
+    // a int32 (declaring variable)
     LocalVarDecl {
-        type_ident: String,
-        var_ident: String,
+        ident: String,
+        type_ident: String
     },
     // a = 10 (updating value)
-    VarAssign {
+    LocalVarAssign {
         ident: String,
         value: Expr,
     },
@@ -21,10 +21,10 @@ pub enum Stmt {
         operator: BinaryOp,
         value: Expr,
     },
-    // Int32 a := 10 OR a := 10 (infers type)
-    VarDeclAssign {
-        type_ident: Option<String>,
+    // a int32 := 10 OR a := 10 (infers type)
+    LocalVarDeclAssign {
         ident: String,
+        type_ident: Option<String>,
         value: Expr,
     },
     Break,
@@ -58,10 +58,10 @@ impl Stmt {
                 astnode.display_inner(depth, result);
             }
             Stmt::LocalVarDecl {
+                ident: var_ident,
                 type_ident,
-                var_ident,
             } => {
-                result.push_str(&format!("VarDecl: \"{}\" {}", var_ident, type_ident));
+                result.push_str(&format!("VarDecl: \"{}\" {}", type_ident, var_ident));
             }
             Stmt::Break => {
                 result.push_str("Break");
@@ -88,13 +88,13 @@ impl Stmt {
                 result.push_str("Ret: ");
                 expr.display_inner(depth, result);
             }
-            Stmt::VarAssign { ident, value } => {
+            Stmt::LocalVarAssign { ident, value } => {
                 result.push_str(&format!("VarAssign \"{}\"", ident));
                 value.display_inner(depth, result);
             }
-            Stmt::VarDeclAssign {
-                type_ident,
+            Stmt::LocalVarDeclAssign {
                 ident,
+                type_ident,
                 value,
             } => {
                 result.push_str(&format!("VarDeclAssign \"{}\"", ident));

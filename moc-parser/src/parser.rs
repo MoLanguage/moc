@@ -192,13 +192,12 @@ impl Parser {
         let mut params = Vec::new();
         if !self.matches(TokenType::CloseParen) {
             loop {
-                self.try_consume_token(TokenType::Ident, "Expected type identifier")?;
-                let type_ident = self.unwrap_current_token().unwrap_value();
-
                 self.try_consume_token(TokenType::Ident, "Expected variable identifier")?;
                 let var_ident = self.unwrap_current_token().unwrap_value();
 
-                params.push(TypedVar::new(type_ident, var_ident));
+                self.try_consume_token(TokenType::Ident, "Expected type identifier")?;
+                let type_ident = self.unwrap_current_token().unwrap_value();
+                params.push(TypedVar::new(var_ident, type_ident));
 
                 if self.matches(TokenType::CloseParen) {
                     break;
@@ -219,6 +218,7 @@ impl Parser {
             return_type = Some(self.unwrap_current_token().unwrap_value());
         }
         // parse body / code
+        self.skip_tokens_of_type(TokenType::LineBreak);
         let body = self.parse_code_block()?;
         let fn_decl = Decl::Fn {
             ident: fn_ident,
@@ -309,43 +309,43 @@ impl Parser {
 
     /*
     Parses statements of this form:
-    Int32 a := 10 | DeclAssignmt
+    a int32 := 10 | DeclAssignmt
     a := 10       | DeclAssignmt (no type identifier. type to be inferred)
-    Int32 a       | Decl
+    a int32       | Decl
     a = 10        | Assignmt
      */
     fn parse_var_decl_assignmt(&mut self) -> Result<Stmt, ParserError> {
         assert_eq!(self.unwrap_current_token().r#type, TokenType::Ident);
-        let ident1 = self.unwrap_current_token().unwrap_value();
+        let ident = self.unwrap_current_token().unwrap_value();
         if self.matches(TokenType::Ident) {
-            let ident2 = self.unwrap_current_token().unwrap_value();
+            let type_ident = self.unwrap_current_token().unwrap_value();
             if self.matches(TokenType::DeclareAssign) {
                 let expr = self.parse_expression()?;
                 self.consume_line_terminator()?;
-                return Ok(Stmt::VarDeclAssign {
-                    type_ident: Some(ident1),
-                    ident: ident2,
+                return Ok(Stmt::LocalVarDeclAssign {
+                    type_ident: Some(type_ident),
+                    ident,
                     value: expr,
                 });
             } else if self.matches_any(&[TokenType::LineBreak, TokenType::Semicolon]) {
                 return Ok(Stmt::LocalVarDecl {
-                    type_ident: ident1,
-                    var_ident: ident2,
+                    ident,
+                    type_ident,
                 });
             }
         } else if self.matches(TokenType::Assign) {
             let expr = self.parse_expression()?;
             self.consume_line_terminator()?;
-            return Ok(Stmt::VarAssign {
-                ident: ident1,
+            return Ok(Stmt::LocalVarAssign {
+                ident,
                 value: expr,
             });
         } else if self.matches(TokenType::DeclareAssign) {
             let expr = self.parse_expression()?;
             self.consume_line_terminator()?;
-            return Ok(Stmt::VarDeclAssign {
+            return Ok(Stmt::LocalVarDeclAssign {
                 type_ident: None,
-                ident: ident1,
+                ident,
                 value: expr,
             });
         }
@@ -386,7 +386,6 @@ impl Parser {
                 .wrap();
             }
         }
-        //self.consume_line_terminator()?;
         let fn_call = Expr::FnCall {
             ident: fn_ident,
             args,
@@ -398,7 +397,6 @@ impl Parser {
     for <bool expr> <code block>
      */
     fn parse_for_loop(&mut self) -> Result<Stmt, ParserError> {
-        // parse for loop
         self.advance();
         let condition = self.parse_expression()?;
         let code_block = self.parse_code_block()?;
@@ -434,8 +432,8 @@ impl Parser {
     /*
     Parse struct declaration of form:
     struct Foo {
-        Int32 a
-        Int32 b
+        a int
+        b int
     }
     unit struct:
     struct Foo {}
@@ -445,19 +443,22 @@ impl Parser {
         self.advance();
         self.try_consume_token(TokenType::Ident, "Expected struct identifier")?;
         let struct_ident = self.unwrap_current_token().unwrap_value();
+        self.skip_tokens_of_type(TokenType::LineBreak);
         self.try_consume_token(TokenType::OpenBrace, "Expected open brace")?;
-        self.skip_tokens_of_types(&[TokenType::LineBreak, TokenType::Semicolon]);
         let mut fields = Vec::new();
         loop {
+            self.skip_tokens_of_type(TokenType::LineBreak);
             if self.matches(TokenType::CloseBrace) {
-                break;
+                break; // empty struct case
             }
-            self.try_consume_token(TokenType::Ident, "Expected type identifier")?;
-            let type_ident = self.unwrap_current_token().unwrap_value();
             self.try_consume_token(TokenType::Ident, "Expected variable identifier")?;
             let var_ident = self.unwrap_current_token().unwrap_value();
-            fields.push(TypedVar::new(type_ident, var_ident));
-            self.try_consume_token2(&[TokenType::LineBreak, TokenType::Comma], "Expected comma ',' or linebreak")?;
+            self.try_consume_token(TokenType::Ident, "Expected type identifier")?;
+            let type_ident = self.unwrap_current_token().unwrap_value();
+            fields.push(TypedVar::new(var_ident, type_ident));
+            if !self.peek().is_some_and(|t| t.is_of_type(TokenType::CloseBrace)) { // if next isnt closebrace, means we are expecting next struct field declaration
+                self.try_consume_token2(&[TokenType::LineBreak, TokenType::Comma], "Expected comma ',' or linebreak")?;
+            }
         }
         decl = Decl::Struct {
             ident: struct_ident,

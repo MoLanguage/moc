@@ -89,14 +89,14 @@ pub enum BinaryOp {
 
 #[derive(Debug, Clone)]
 pub struct TypedVar {
+    /// the variable's identifier
+    ident: String,
     /// the type identifier
     type_ident: String,
-    /// the identifier of the actual variable
-    ident: String,
 }
 
 impl TypedVar {
-    pub fn new(type_ident: String, ident: String) -> Self {
-        Self { type_ident, ident }
+    pub fn new(ident: String, type_ident: String) -> Self {
+        Self { ident, type_ident }
     }
 }
