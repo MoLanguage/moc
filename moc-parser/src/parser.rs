@@ -528,7 +528,7 @@ impl Parser {
         Ok(expr)
     }
 
-    // a / b   a * b   a % b   a ~ b   a << b   a >> b   a ^ b   a | b
+    // a / b   a * b   a % b   a & b   a ~ b   a << b   a >> b   a ^ b   a | b
     fn parse_factor_and_bitwise_expr(&mut self) -> ExprParseResult {
         debug!(
             "Parsing factor expr (/ * %) {}",

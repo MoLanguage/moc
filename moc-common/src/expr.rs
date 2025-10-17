@@ -18,7 +18,6 @@ pub enum Expr {
     Grouping(Box<Expr>),
     VariableIdent(String),
 
-    Loop(Vec<Expr>), // simple infinite loop
     NumberLiteral(String),
 
     StringLiteral(String),
@@ -98,12 +97,6 @@ impl Expr {
                     }
                 }
             } */
-            Expr::Loop(astnodes) => {
-                result.push_str("Loop");
-                for stmt in astnodes {
-                    stmt.display_inner(depth, result);
-                }
-            }
             Expr::NumberLiteral(num) => {
                 result.push_str(&format!("NumberLiteral: {}", num));
             }
