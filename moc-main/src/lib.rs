@@ -36,18 +36,23 @@ pub fn compile_file(path: impl AsRef<Path>, options: CompilerOptions) -> Result<
             file.read_to_string(&mut src).unwrap();
             let lexer = Lexer::new(&src);
             let tokens = lexer.tokens();
-            if options.emit_tokens {
-                meta_data.tokens = Some(tokens.clone());
-            }
-            let parser = Parser::new(tokens);
-            match parser.parse() {
-                Ok(ast) => {
-                    if options.emit_ast {
-                        meta_data.ast = Some(ast.clone());
+            match tokens {
+                Ok(tokens) => {
+                    if options.emit_tokens {
+                        meta_data.tokens = Some(tokens.clone());
                     }
-                    // TODO: continue into semantic analysis
+                    let parser = Parser::new(tokens);
+                    match parser.parse() {
+                        Ok(ast) => {
+                            if options.emit_ast {
+                                meta_data.ast = Some(ast.clone());
+                            }
+                            // TODO: continue into semantic analysis
+                        },
+                        Err(err) => { return Err(CompilerError::ParserError(err)) }
+                    }
                 },
-                Err(err) => { return Err(CompilerError::ParserError(err)) }
+                Err(lexer_err) => return Err(CompilerError::LexerError(lexer_err)),
             }
         }
         Err(io_error) => {

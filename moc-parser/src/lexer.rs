@@ -1,9 +1,9 @@
 use std::iter::Peekable;
 use std::str::Chars;
 
-use moc_common::{CodeLocation, CodeSpan};
 use moc_common::error::{LexerError, LexerResult};
 use moc_common::token::{Token, TokenType};
+use moc_common::{CodeLocation, CodeSpan};
 
 #[derive(Clone)]
 pub struct Lexer<'a> {
@@ -14,14 +14,17 @@ pub struct Lexer<'a> {
 
 macro_rules! token {
     ($lexer:expr, $token_type:ident) => {
-        Token::new(TokenType::$token_type, CodeSpan::from(($lexer.last_token_end, $lexer.location)))
-    }
+        Token::new(
+            TokenType::$token_type,
+            CodeSpan::from(($lexer.last_token_end, $lexer.location)),
+        )
+    };
 }
 
 macro_rules! ok_token {
     ($lexer:expr, $token_type:ident) => {
         Ok(token!($lexer, $token_type))
-    }
+    };
 }
 
 impl<'a> Iterator for Lexer<'a> {
@@ -37,19 +40,21 @@ impl<'a> Lexer<'a> {
         Self {
             chars: input.chars().peekable(),
             location: CodeLocation::default(),
-            last_token_end: CodeLocation::default()
+            last_token_end: CodeLocation::default(),
         }
     }
 
-    pub fn tokens(mut self) -> Vec<Token> {
+    pub fn tokens(mut self) -> Result<Vec<Token>, LexerError> {
         let mut tokens = Vec::with_capacity(256);
-        while let Ok(token) = self.next_token() {
+        loop {
+            let token = self.next_token()?;
             if token.r#type == TokenType::EndOfFile {
                 break;
+            } else {
+                tokens.push(token);
             }
-            tokens.push(token);
         }
-        tokens
+        Ok(tokens)
     }
 
     fn count_line_break(&mut self) {
@@ -101,7 +106,7 @@ impl<'a> Lexer<'a> {
                     }
                     '@' => {
                         self.advance();
-                        break ok_token!(self, At)
+                        break ok_token!(self, At);
                     }
                     ',' => {
                         self.advance();
@@ -143,31 +148,31 @@ impl<'a> Lexer<'a> {
                     }
                     '(' => {
                         self.advance();
-                        break ok_token!(self, OpenParen)
+                        break ok_token!(self, OpenParen);
                     }
                     ')' => {
                         self.advance();
-                        break ok_token!(self, CloseParen)
+                        break ok_token!(self, CloseParen);
                     }
                     ':' => {
                         self.advance();
                         if self.peek_char() == Some('=') {
                             self.advance();
-                            break ok_token!(self, DeclareAssign)
+                            break ok_token!(self, DeclareAssign);
                         }
-                        break ok_token!(self, Colon)
+                        break ok_token!(self, Colon);
                     }
                     ';' => {
                         self.advance();
-                        break ok_token!(self, Semicolon)
+                        break ok_token!(self, Semicolon);
                     }
                     '=' => {
                         self.advance();
                         if self.peek_char() == Some('=') {
                             self.advance();
-                            break ok_token!(self, EqualTo)
+                            break ok_token!(self, EqualTo);
                         }
-                        break ok_token!(self, Assign)
+                        break ok_token!(self, Assign);
                     }
                     '+' | '-' | '*' | '%' | '&' | '|' | '~' | '^' | '<' | '>' => {
                         break self.lex_operator(ch);
@@ -179,13 +184,12 @@ impl<'a> Lexer<'a> {
                         break Err(LexerError::InvalidCharacter(ch));
                     } // TODO: return proper LexerError
                 }
+            } else {
+                return ok_token!(self, EndOfFile)
             }
         };
 
-        if let Ok(_) = lexer_result {
-            return lexer_result;
-        }
-        Err(LexerError::UnknownToken)
+        return lexer_result;
     }
 
     fn lex_operator(&mut self, ch: char) -> LexerResult {
@@ -230,7 +234,10 @@ impl<'a> Lexer<'a> {
 
             // is a 2 character operator
             self.advance();
-            return Ok(Token::new(token_type, (self.last_token_end, self.location).into()));
+            return Ok(Token::new(
+                token_type,
+                (self.last_token_end, self.location).into(),
+            ));
         } else {
             let token_type = match ch {
                 '+' => TokenType::Plus,
@@ -246,7 +253,10 @@ impl<'a> Lexer<'a> {
                 '~' => TokenType::Tilde,
                 _ => unreachable!(),
             };
-            return Ok(Token::new(token_type, (self.last_token_end, self.location).into()));
+            return Ok(Token::new(
+                token_type,
+                (self.last_token_end, self.location).into(),
+            ));
         }
     }
 
@@ -329,7 +339,10 @@ impl<'a> Lexer<'a> {
             }
         }
         if ends_by_quote {
-            Ok(Token::string_literal(value, (self.last_token_end, self.location).into()))
+            Ok(Token::string_literal(
+                value,
+                (self.last_token_end, self.location).into(),
+            ))
         } else {
             Err(LexerError::UnterminatedStringLiteral(self.location))
         }
