@@ -31,7 +31,7 @@ impl<'a> Iterator for Lexer<'a> {
     type Item = LexerResult;
 
     fn next(&mut self) -> Option<Self::Item> {
-        Some(self.next_token()) // discards error... :/ when peeking char, the lexer error is just discarded
+        Some(self.next_token())
     }
 }
 
