@@ -18,6 +18,12 @@ pub struct CodeLocation {
     pub column: u32,
 }
 
+impl CodeLocation {
+    pub fn is_in_same_line(&self, other: &Self) -> bool {
+        self.line == other.line
+    }
+}
+
 impl Default for CodeLocation {
     fn default() -> Self {
         Self { line: 1, column: 1 }
@@ -27,6 +33,28 @@ impl Default for CodeLocation {
 impl Display for CodeLocation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}:{}", self.line, self.column))
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CodeSpan {
+    pub start: CodeLocation,
+    pub end: CodeLocation
+}
+
+impl CodeSpan {
+    // Shouldnt ever be true really >:(
+    pub fn spans_across_lines(&self) -> bool {
+        !self.start.is_in_same_line(&self.end)
+    }
+    pub fn length(&self) -> u32 {
+        self.end.column - self.start.column
+    }
+}
+
+impl From<(CodeLocation, CodeLocation)> for CodeSpan {
+    fn from(value: (CodeLocation, CodeLocation)) -> Self {
+        Self { start: value.0, end: value.1 }
     }
 }
 

@@ -71,6 +71,7 @@ impl Parser {
         }
     }
     /// Skips tokens that are of any of the types given.
+    #[allow(dead_code)]
     fn skip_tokens_of_types(&mut self, token_types: &[TokenType]) {
         loop {
             if let Some(token) = self.peek() {
@@ -95,8 +96,7 @@ impl Parser {
     }
 
     pub fn parse(mut self) -> ParseResult {
-        let borrowed = &mut self;
-        borrowed.parse_top_level_decls()?;
+        (&mut self).parse_top_level_decls()?;
         Ok(self.ast)
     }
 
@@ -239,7 +239,7 @@ impl Parser {
 
         self.skip_tokens_of_type(TokenType::LineBreak); // move on if there's a linebreak.
 
-        // what can we expect within a code block?
+        // what can we expect within a cod  e block?
         // variable declaration
         // if statement
         // for loop
@@ -685,16 +685,16 @@ impl Parser {
 
     fn parser_state_dbg_info(&mut self) -> String {
         let current = self.unwrap_current_token();
-        let line = current.location.line;
-        let col = current.location.column;
+        let line = current.span.start.line;
+        let col = current.span.end.column;
         let r#type = current.r#type;
         let mut str = String::new();
 
         str.push_str(&format!("Current: \"{}\", loc: {}:{}", r#type, line, col));
 
         if let Some(next) = self.peek() {
-            let line = next.location.line;
-            let col = next.location.column;
+            let line = next.span.end.line;
+            let col = next.span.end.column;
             let r#type = next.r#type;
             str.push_str(&format!(" --- Next: \"{}\", loc: {}:{}", r#type, line, col));
         }
