@@ -51,17 +51,6 @@ impl Expr {
         let depth = depth + 1;
         result.push_str(&create_indent(depth));
         match self {
-            /* Expr::Print(astnode) => {
-                result.push_str("Print");
-                astnode.print_inner(depth, result);
-            }
-            Expr::VarDecl(ident, astnode) => {
-                result.push_str(&format!("VarDecl \"{}\"", ident));
-                astnode.print_inner(depth, result);
-            }
-            Expr::Break => {
-                result.push_str("Break");
-            } */
             Expr::Binary {
                 left_expr,
                 operator,
@@ -85,18 +74,6 @@ impl Expr {
                     arg.display_inner(depth, result);
                 }
             }
-            /* Expr::If { condition, if_block, else_block } => {
-                result.push_str("If: ");
-                condition.print_inner(depth, result);
-                for if_block_stmt in if_block {
-                    if_block_stmt.print_inner(depth, result);
-                }
-                if let Some(else_block) = else_block {
-                    for else_block_stmt in else_block {
-                        else_block_stmt.print_inner(depth, result);
-                    }
-                }
-            } */
             Expr::NumberLiteral(num) => {
                 result.push_str(&format!("NumberLiteral: {}", num));
             }
@@ -107,30 +84,6 @@ impl Expr {
                 result.push_str(&format!("Unary: {:?}", op));
                 astnode.display_inner(depth, result);
             }
-            /* Expr::UseDecl {
-                module_ident,
-                module_rename,
-            } => {
-                result.push_str(&format!("Use \"{}\"", module_ident));
-                if let Some(mod_rename) = module_rename {
-                    result.push_str(&format!(" {}", mod_rename));
-                }
-            }
-            Expr::FnDecl { ident, body } => {
-                result.push_str(&format!("FnDecl: {}", ident));
-                for stmt in body {
-                    stmt.print_inner(depth, result);
-                }
-            }
-            Expr::StructDecl { ident, body } => {
-                result.push_str(&format!("StructDecl: {}", ident));
-                for field_decl in body {
-                    result.push_str(&format!(
-                        "{:?} \"{}\"",
-                        field_decl.data_type, field_decl.ident
-                    ));
-                }
-            } */
             Expr::EndOfFile => {
                 result.push_str("EOF");
             }

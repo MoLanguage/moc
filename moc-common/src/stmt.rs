@@ -103,14 +103,6 @@ impl Stmt {
                 }
                 value.display_inner(depth, result);
             }
-            /*
-            Stmt::FnCall(fn_call) => {
-                result.push_str(&format!("FnCall: {}", fn_call.ident));
-                for arg in &fn_call.args {
-                    arg.print_inner(depth, result);
-                }
-            }
-            */
             Stmt::Expr(expr) => {
                 result.push_str("Expr statement: ");
                 expr.display_inner(depth, result);
