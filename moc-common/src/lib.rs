@@ -1,16 +1,19 @@
-pub mod error;
-pub mod token;
+pub mod ast;
 pub mod debug_utils;
 pub mod decl;
-pub mod stmt;
+pub mod error;
 pub mod expr;
-pub mod ast;
+pub mod stmt;
+pub mod token;
 
-use std::fmt::{Debug, Display};
+use std::{
+    collections::VecDeque,
+    fmt::{Debug, Display},
+};
 
 use derive_more::Display;
 
-use crate::{stmt::Stmt};
+use crate::stmt::Stmt;
 
 #[derive(Debug, Clone, Copy)]
 pub struct CodeLocation {
@@ -39,7 +42,7 @@ impl Display for CodeLocation {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CodeSpan {
     pub start: CodeLocation,
-    pub end: CodeLocation
+    pub end: CodeLocation,
 }
 
 impl CodeSpan {
@@ -54,7 +57,10 @@ impl CodeSpan {
 
 impl From<(CodeLocation, CodeLocation)> for CodeSpan {
     fn from(value: (CodeLocation, CodeLocation)) -> Self {
-        Self { start: value.0, end: value.1 }
+        Self {
+            start: value.0,
+            end: value.1,
+        }
     }
 }
 
@@ -70,33 +76,48 @@ impl CodeBlock {
 }
 
 #[derive(Clone, Debug)]
-pub struct ModIdent(pub Vec<String>);
+pub struct ModIdent {
+    pub path: VecDeque<String>,
+}
 
 impl ModIdent {
-    pub fn new(module_path: Vec<String>) -> Self {
-        ModIdent(module_path)
+    pub fn new(module_path: VecDeque<String>) -> Self {
+        ModIdent { path: module_path }
     }
 
     pub fn from_slice(module_path: &[String]) -> Self {
-        ModIdent(module_path.iter().cloned().collect())
+        ModIdent {
+            path: module_path.iter().cloned().collect(),
+        }
     }
 
-    /// Like for example: "mod:submod:my_function" will yield a ModuleIdentifier with dirs: mod:submod
+    /// Like for example: The string "mod:submod:my_function" will yield a ModuleIdentifier with dirs: mod:submod
     pub fn from_qualified_item_identifier(ident: &str) -> Self {
-        let dirs: Vec<String> = ident.split_terminator(":").map(|path_dir| path_dir.to_string()).collect();
-        let dirs = &dirs[0..dirs.len()-1]; // cut off non-module identifier part
-        ModIdent(dirs.iter().cloned().collect())
+        let mut path: VecDeque<String> = ident
+            .split_terminator(":")
+            .map(|path_dir| path_dir.to_string())
+            .collect();
+        path.remove(path.len() - 1);
+        ModIdent { path }
     }
     pub fn from_string(ident: &str) -> Self {
-        let dirs = ident.split_terminator(":").map(|path_dir| path_dir.to_string()).collect();
-        ModIdent(dirs)
+        let path = ident
+            .split_terminator(":")
+            .map(|path_dir| path_dir.to_string())
+            .collect();
+        ModIdent { path }
+    }
+
+    pub fn remove_and_get_last_path(&mut self) -> String {
+        // Safety: If we check the length of the array it should always yield an element. Therefore the unchecked unwrap shouldn't fail ;)
+        unsafe { self.path.remove(self.path.len() - 1).unwrap_unchecked() }
     }
 }
 
 impl Display for ModIdent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("ModuleIdentifier")?;
-        self.0.fmt(f)
+        self.path.fmt(f)
     }
 }
 

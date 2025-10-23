@@ -1,4 +1,4 @@
-use std::{iter::Peekable, vec::IntoIter};
+use std::{collections::VecDeque, iter::Peekable, vec::IntoIter};
 
 use log::debug;
 use moc_common::{
@@ -136,10 +136,10 @@ impl Parser {
     }
 
     fn parse_module_identifier(&mut self) -> Result<ModIdent, ParserError> {
-        let mut module_dirs = Vec::with_capacity(16);
+        let mut module_dirs = VecDeque::new();
         if self.matches(TokenType::Ident) {
             loop {
-                module_dirs.push(self.unwrap_current_token().unwrap_value());
+                module_dirs.push_back(self.unwrap_current_token().unwrap_value());
                 if self.matches(TokenType::Colon) {
                     if self.matches(TokenType::Ident) {
                         continue;
@@ -158,7 +158,7 @@ impl Parser {
             return ParserError::new("Expected module identifier", self.current_token.clone())
                 .wrap();
         }
-        Ok(ModIdent(module_dirs))
+        Ok(ModIdent::new(module_dirs))
     }
     // use io | use io "foo"
     // use io:print | s
@@ -262,9 +262,14 @@ impl Parser {
                     TokenType::Ident => {
                         // ambiguity: function call vs variable declaration
                         self.advance(); // advancing to be able to check if next token is a open parenthesis
-                        let ident = token.unwrap_value(); // save the identifier value
+                        let mut ident = token.unwrap_value(); // save the identifier value
+                        let mut mod_ident = None;
+                        // parse module spec prefix
+                        if self.matches(TokenType::Colon) {
+                            (ident, mod_ident) = self.parse_module_prefix(ident)?;
+                        }
                         if self.matches(TokenType::OpenParen) {
-                            let fn_call = self.parse_fn_call(ident)?;
+                            let fn_call = self.parse_fn_call(ident, mod_ident)?;
                             code_block.stmts.push(Stmt::Expr(fn_call));
                         } else if self.matches_predicate(|parser| {
                             parser.peek().is_some_and(|token| token.is_binary_op())
@@ -307,6 +312,14 @@ impl Parser {
         Ok(code_block)
     }
 
+    /// Weird hacky function to get the module identifier from e.g. a function call with a prefix like this: std:io:print()
+    fn parse_module_prefix(&mut self, mut ident: String) -> Result<(String, Option<ModIdent>), ParserError> {
+        // has module identifier
+        let mut module_ident0 = self.parse_module_identifier()?;
+        module_ident0.path.push_front(ident); // already parsed Ident token becomes first piece of the module identifier
+        ident = module_ident0.remove_and_get_last_path(); // last path becomes function/variable identifier
+        Ok((ident, Some(module_ident0)))
+    }
     /*
     Parses statements of this form:
     a int32 := 10 | DeclAssignmt
@@ -358,7 +371,11 @@ impl Parser {
     }
 
     // when this is called, the current token is the function identifier
-    fn parse_fn_call(&mut self, fn_ident: String) -> Result<Expr, ParserError> {
+    fn parse_fn_call(
+        &mut self,
+        fn_ident: String,
+        mod_ident: Option<ModIdent>,
+    ) -> Result<Expr, ParserError> {
         // parse arguments
         let mut args = Vec::new();
 
@@ -380,7 +397,7 @@ impl Parser {
             }
         }
         let fn_call = Expr::FnCall {
-            module: None, // TODO: Parse module path or smthin
+            mod_ident, // TODO: Parse module path or smthin
             ident: fn_ident,
             args,
         };
@@ -578,16 +595,20 @@ impl Parser {
         //dbg!(&self.current_token);
         //dbg!(&self.peek());
         if self.matches(TokenType::Ident) {
-            let ident = self.unwrap_current_token().unwrap_value();
+            let mut ident = self.unwrap_current_token().unwrap_value();
+            let mut mod_ident = None;
+            if self.matches(TokenType::Colon) {
+                (ident, mod_ident) = self.parse_module_prefix(ident)?;
+            }
             //TODO: Parse function calls
             if self.matches(TokenType::OpenParen) {
-                let fn_call = self.parse_fn_call(ident)?;
+                let fn_call = self.parse_fn_call(ident, mod_ident)?;
                 return Ok(fn_call);
             }
             debug!("Ok, returning variable ident expr");
             return Ok(Expr::Variable {
                 ident,
-                module: None,
+                mod_ident,
             });
         }
         if self.matches(TokenType::True) {

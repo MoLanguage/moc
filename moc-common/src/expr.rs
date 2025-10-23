@@ -12,13 +12,13 @@ pub enum Expr {
     },
     BoolLiteral(bool),
     FnCall {
-        module: Option<ModIdent>,
+        mod_ident: Option<ModIdent>,
         ident: String,
         args: Vec<Expr>,
     },
     Grouping(Box<Expr>),
     Variable {
-        module: Option<ModIdent>, // for e.g. constants imported from other module
+        mod_ident: Option<ModIdent>, // for e.g. constants imported from other module
         ident: String,
     },
 
@@ -67,17 +67,17 @@ impl Expr {
                 result.push_str("Grouping: ");
                 astnode.display_inner(depth, result);
             }
-            Expr::Variable{ ident, module } => {
-                if let Some(module) = module {
-                    result.push_str(&format!("Variable: {}:\"{}\"", module, ident));
+            Expr::Variable{ ident, mod_ident } => {
+                if let Some(mod_ident) = mod_ident {
+                    result.push_str(&format!("Variable: {}:\"{}\"", mod_ident, ident));
                 } else {
                     result.push_str(&format!("Variable: \"{}\"", ident));
                 }
                 
             }
-            Expr::FnCall { module, ident, args } => {
-                if let Some(module) = module {
-                    result.push_str(&format!("FnCall: {}:\"{}\"", module, ident));
+            Expr::FnCall { mod_ident, ident, args } => {
+                if let Some(mod_ident) = mod_ident {
+                    result.push_str(&format!("FnCall: {}:\"{}\"", mod_ident, ident));
                 } else {
                     result.push_str(&format!("FnCall: {}", ident));
                 }
