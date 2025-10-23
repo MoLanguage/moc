@@ -364,7 +364,6 @@ impl Parser {
     }
 
     // when this is called, the current token is the function identifier
-    // TODO: Rewrite to return expr instead
     fn parse_fn_call(&mut self, fn_ident: String) -> Result<Expr, ParserError> {
         // parse arguments
         let mut args = Vec::new();
@@ -483,8 +482,7 @@ impl Parser {
             let operator = self.unwrap_current_token();
             println!("equality expr: chosen operator {}", operator.r#type);
             let right = self.parse_comparison_expr()?;
-            expr = Expr::binary(expr, operator, right);
-        }
+            expr = Expr::binary(expr, operator, right);        }
         Ok(expr)
     }
 
