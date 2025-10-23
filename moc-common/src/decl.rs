@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::{debug_utils::create_indent, CodeBlock, ModuleIdentifier, TypedVar};
+use crate::{debug_utils::create_indent, CodeBlock, ModIdent, TypedVar};
 
 #[derive(Debug, Clone)]
 pub enum Decl {
@@ -12,7 +12,7 @@ pub enum Decl {
         body: CodeBlock,
     },
     Use {
-        module_ident: ModuleIdentifier,
+        module_ident: ModIdent,
         module_alias: Option<String>,
     },
     Struct {

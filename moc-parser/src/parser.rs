@@ -2,7 +2,7 @@ use std::{iter::Peekable, vec::IntoIter};
 
 use log::debug;
 use moc_common::{
-    CodeBlock, ModuleIdentifier, TypedVar,
+    CodeBlock, ModIdent, TypedVar,
     ast::Ast,
     decl::Decl,
     error::{ExprParseResult, ParseResult, ParserError},
@@ -135,7 +135,7 @@ impl Parser {
         Ok(())
     }
 
-    fn parse_module_identifier(&mut self) -> Result<ModuleIdentifier, ParserError> {
+    fn parse_module_identifier(&mut self) -> Result<ModIdent, ParserError> {
         let mut module_dirs = Vec::with_capacity(16);
         if self.matches(TokenType::Ident) {
             loop {
@@ -158,7 +158,7 @@ impl Parser {
             return ParserError::new("Expected module identifier", self.current_token.clone())
                 .wrap();
         }
-        Ok(ModuleIdentifier(module_dirs))
+        Ok(ModIdent(module_dirs))
     }
     // use io | use io "foo"
     // use io:print | s

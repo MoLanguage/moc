@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::{debug_utils::create_indent, token::Token, ModuleIdentifier};
+use crate::{debug_utils::create_indent, token::Token, ModIdent};
 
 #[derive(Debug, Clone)]
 pub enum Expr {
@@ -12,13 +12,13 @@ pub enum Expr {
     },
     BoolLiteral(bool),
     FnCall {
-        module: Option<ModuleIdentifier>,
+        module: Option<ModIdent>,
         ident: String,
         args: Vec<Expr>,
     },
     Grouping(Box<Expr>),
     Variable {
-        module: Option<ModuleIdentifier>, // for e.g. constants imported from other module
+        module: Option<ModIdent>, // for e.g. constants imported from other module
         ident: String,
     },
 
