@@ -43,7 +43,7 @@ impl Parser {
     #[track_caller]
     fn advance(&mut self) {
         self.current_token = self.token_stream.next();
-        
+
         // Debug info:
         if let Some(current_token) = self.current_token() {
             if let Some(peeked_token) = self.token_stream.peek().cloned() {
@@ -328,18 +328,12 @@ impl Parser {
                     value: expr,
                 });
             } else if self.matches_any(&[TokenType::LineBreak, TokenType::Semicolon]) {
-                return Ok(Stmt::LocalVarDecl {
-                    ident,
-                    type_ident,
-                });
+                return Ok(Stmt::LocalVarDecl { ident, type_ident });
             }
         } else if self.matches(TokenType::Assign) {
             let expr = self.parse_expression()?;
             self.consume_line_terminator()?;
-            return Ok(Stmt::LocalVarAssign {
-                ident,
-                value: expr,
-            });
+            return Ok(Stmt::LocalVarAssign { ident, value: expr });
         } else if self.matches(TokenType::DeclareAssign) {
             let expr = self.parse_expression()?;
             self.consume_line_terminator()?;
@@ -386,6 +380,7 @@ impl Parser {
             }
         }
         let fn_call = Expr::FnCall {
+            module: None, // TODO: Parse module path or smthin
             ident: fn_ident,
             args,
         };
@@ -455,8 +450,15 @@ impl Parser {
             self.try_consume_token(TokenType::Ident, "Expected type identifier")?;
             let type_ident = self.unwrap_current_token().unwrap_value();
             fields.push(TypedVar::new(var_ident, type_ident));
-            if !self.peek().is_some_and(|t| t.is_of_type(TokenType::CloseBrace)) { // if next isnt closebrace, means we are expecting next struct field declaration
-                self.try_consume_token2(&[TokenType::LineBreak, TokenType::Comma], "Expected comma ',' or linebreak")?;
+            if !self
+                .peek()
+                .is_some_and(|t| t.is_of_type(TokenType::CloseBrace))
+            {
+                // if next isnt closebrace, means we are expecting next struct field declaration
+                self.try_consume_token2(
+                    &[TokenType::LineBreak, TokenType::Comma],
+                    "Expected comma ',' or linebreak",
+                )?;
             }
         }
         decl = Decl::Struct {
@@ -482,7 +484,8 @@ impl Parser {
             let operator = self.unwrap_current_token();
             println!("equality expr: chosen operator {}", operator.r#type);
             let right = self.parse_comparison_expr()?;
-            expr = Expr::binary(expr, operator, right);        }
+            expr = Expr::binary(expr, operator, right);
+        }
         Ok(expr)
     }
 
@@ -582,7 +585,10 @@ impl Parser {
                 return Ok(fn_call);
             }
             debug!("Ok, returning variable ident expr");
-            return Ok(Expr::Variable(ident));
+            return Ok(Expr::Variable {
+                ident,
+                module: None,
+            });
         }
         if self.matches(TokenType::True) {
             debug!("Ok, returning boolean literal expr");

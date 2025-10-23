@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::{debug_utils::{create_indent}, token::Token};
+use crate::{debug_utils::create_indent, token::Token, ModuleIdentifier};
 
 #[derive(Debug, Clone)]
 pub enum Expr {
@@ -12,11 +12,15 @@ pub enum Expr {
     },
     BoolLiteral(bool),
     FnCall {
+        module: Option<ModuleIdentifier>,
         ident: String,
         args: Vec<Expr>,
     },
     Grouping(Box<Expr>),
-    Variable(String),
+    Variable {
+        module: Option<ModuleIdentifier>, // for e.g. constants imported from other module
+        ident: String,
+    },
 
     NumberLiteral(String),
 
@@ -63,11 +67,20 @@ impl Expr {
                 result.push_str("Grouping: ");
                 astnode.display_inner(depth, result);
             }
-            Expr::Variable(ident) => {
-                result.push_str(&format!("VariableIdent: \"{}\"", ident));
+            Expr::Variable{ ident, module } => {
+                if let Some(module) = module {
+                    result.push_str(&format!("Variable: {}:\"{}\"", module, ident));
+                } else {
+                    result.push_str(&format!("Variable: \"{}\"", ident));
+                }
+                
             }
-            Expr::FnCall { ident, args } => {
-                result.push_str(&format!("FnCall: {}", ident));
+            Expr::FnCall { module, ident, args } => {
+                if let Some(module) = module {
+                    result.push_str(&format!("FnCall: {}:\"{}\"", module, ident));
+                } else {
+                    result.push_str(&format!("FnCall: {}", ident));
+                }
                 for arg in args {
                     arg.display_inner(depth, result);
                 }
