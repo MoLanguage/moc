@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display};
 
 use crate::{debug_utils::create_indent, token::Token, ModIdent};
 
@@ -89,7 +89,7 @@ impl Expr {
                 result.push_str(&format!("NumberLiteral: {}", num));
             }
             Expr::StringLiteral(str) => {
-                result.push_str(&format!("StringLiteral: {}", str));
+                result.push_str(&format!("StringLiteral: {}", str.escape_default().to_string()));
             }
             Expr::Unary(op, astnode) => {
                 result.push_str(&format!("Unary: {:?}", op));
