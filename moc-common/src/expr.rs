@@ -16,14 +16,12 @@ pub enum Expr {
         args: Vec<Expr>,
     },
     Grouping(Box<Expr>),
-    VariableIdent(String),
+    Variable(String),
 
     NumberLiteral(String),
 
     StringLiteral(String),
     Unary(Token, Box<Expr>), // Operator followed by another expr
-
-    EndOfFile,
 }
 
 impl Expr {
@@ -65,7 +63,7 @@ impl Expr {
                 result.push_str("Grouping: ");
                 astnode.display_inner(depth, result);
             }
-            Expr::VariableIdent(ident) => {
+            Expr::Variable(ident) => {
                 result.push_str(&format!("VariableIdent: \"{}\"", ident));
             }
             Expr::FnCall { ident, args } => {
@@ -83,9 +81,6 @@ impl Expr {
             Expr::Unary(op, astnode) => {
                 result.push_str(&format!("Unary: {:?}", op));
                 astnode.display_inner(depth, result);
-            }
-            Expr::EndOfFile => {
-                result.push_str("EOF");
             }
         }
     }

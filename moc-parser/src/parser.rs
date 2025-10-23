@@ -582,7 +582,7 @@ impl Parser {
                 return Ok(fn_call);
             }
             debug!("Ok, returning variable ident expr");
-            return Ok(Expr::VariableIdent(ident));
+            return Ok(Expr::Variable(ident));
         }
         if self.matches(TokenType::True) {
             debug!("Ok, returning boolean literal expr");
