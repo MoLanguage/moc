@@ -74,7 +74,11 @@ pub enum TokenType {
     ModAssign,
     MultAssign,
     NotEqualTo,
-    NumberLiteral,
+    DecimalIntegerNumberLiteral,
+    DecimalPointNumberLiteral,
+    HexadecimalIntegerNumberLiteral,
+    OctalIntegerNumberLiteral,
+    BinaryIntegerNumberLiteral,
     OpenBrace,
     OpenParen,
     Plus,
@@ -89,6 +93,37 @@ pub enum TokenType {
     Tilde, // ~
     True,
     Use,
+}
+
+#[derive(Debug, Clone, Display)]
+pub enum NumberLiteralType {
+    DecimalInteger,
+    DecimalPoint, // like floating point
+    BinaryInteger,
+    OctalInteger,
+    HexadecimalInteger
+}
+
+impl NumberLiteralType {
+    pub fn get_radix(&self) -> u32 {
+        match self {
+            NumberLiteralType::DecimalInteger => 10,
+            NumberLiteralType::DecimalPoint => 10,
+            NumberLiteralType::BinaryInteger => 2,
+            NumberLiteralType::OctalInteger => 8,
+            NumberLiteralType::HexadecimalInteger => 16,
+        }
+    }
+
+    pub fn get_token_type(&self) -> TokenType {
+        match self {
+            NumberLiteralType::DecimalInteger => TokenType::DecimalIntegerNumberLiteral,
+            NumberLiteralType::DecimalPoint => TokenType::DecimalPointNumberLiteral,
+            NumberLiteralType::BinaryInteger => TokenType::BinaryIntegerNumberLiteral,
+            NumberLiteralType::OctalInteger => TokenType::OctalIntegerNumberLiteral,
+            NumberLiteralType::HexadecimalInteger => TokenType::HexadecimalIntegerNumberLiteral,
+        }
+    }
 }
 
 impl Token {
@@ -106,12 +141,15 @@ impl Token {
             span,
         }
     }
-    pub fn number_literal(literal: String, span: CodeSpan) -> Self {
+    pub fn integer(value: String, span: CodeSpan) -> Self {
         Self {
-            r#type: TokenType::NumberLiteral,
-            value: Some(literal.into()),
+            r#type: TokenType::DecimalIntegerNumberLiteral,
+            value: Some(value),
             span,
         }
+    }
+    pub fn number_literal(value: String, number_literal_type: NumberLiteralType, span: CodeSpan) -> Self {
+        Self { r#type: number_literal_type.get_token_type(), value: Some(value), span }
     }
     pub fn new(r#type: TokenType, span: CodeSpan) -> Self {
         Self {
@@ -119,6 +157,9 @@ impl Token {
             value: None,
             span,
         }
+    }
+    pub fn with_value(r#type: TokenType, value: String, span: CodeSpan) -> Self {
+        Self { r#type, value: Some(value), span }
     }
     pub fn value(&self) -> Option<&String> {
         self.value.as_ref()
@@ -159,11 +200,38 @@ impl Token {
         }
         false
     }
+
+    pub fn is_number_literal(&self) -> bool {
+        TryInto::<NumberLiteralType>::try_into(self.r#type).is_ok()
+    }
 }
 
 impl From<TokenType> for Token {
     fn from(r#type: TokenType) -> Self {
         Self { r#type, value: None, span: CodeSpan::default() }
+    }
+}
+
+impl From<NumberLiteralType> for TokenType {
+    fn from(value: NumberLiteralType) -> Self {
+        value.get_token_type()
+    }
+}
+
+#[derive(Debug)]
+pub struct NonNumberLiteralTokenTypeError;
+impl TryFrom<TokenType> for NumberLiteralType {
+    type Error = NonNumberLiteralTokenTypeError;
+
+    fn try_from(value: TokenType) -> Result<Self, Self::Error> {
+        match value {
+            TokenType::DecimalIntegerNumberLiteral => Ok(NumberLiteralType::DecimalInteger),
+            TokenType::DecimalPointNumberLiteral => Ok(NumberLiteralType::DecimalPoint),
+            TokenType::BinaryIntegerNumberLiteral => Ok(NumberLiteralType::BinaryInteger),
+            TokenType::OctalIntegerNumberLiteral => Ok(NumberLiteralType::OctalInteger),
+            TokenType::HexadecimalIntegerNumberLiteral => Ok(NumberLiteralType::HexadecimalInteger),
+            _ => Err(NonNumberLiteralTokenTypeError)
+        }
     }
 }
 

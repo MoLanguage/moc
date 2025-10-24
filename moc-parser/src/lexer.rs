@@ -1,13 +1,13 @@
-use std::iter::Peekable;
 use std::str::Chars;
 
+use itertools::{peek_nth, PeekNth};
 use moc_common::error::{LexerError, LexerResult};
-use moc_common::token::{Token, TokenType};
+use moc_common::token::{NumberLiteralType, Token, TokenType};
 use moc_common::{CodeLocation, CodeSpan};
 
 #[derive(Clone)]
 pub struct Lexer<'a> {
-    chars: Peekable<Chars<'a>>,
+    chars: PeekNth<Chars<'a>>,
     last_token_end: CodeLocation,
     location: CodeLocation,
 }
@@ -38,7 +38,7 @@ impl<'a> Iterator for Lexer<'a> {
 impl<'a> Lexer<'a> {
     pub fn new(input: &'a str) -> Self {
         Self {
-            chars: input.chars().peekable(),
+            chars: peek_nth(input.chars()),
             location: CodeLocation::default(),
             last_token_end: CodeLocation::default(),
         }
@@ -66,9 +66,18 @@ impl<'a> Lexer<'a> {
         self.location.column += 1;
         self.chars.next()
     }
+    
+    fn advance_n(&mut self, n: usize) {
+        for _ in 0..n {
+            self.advance();
+        }
+    }
 
     fn peek_char(&mut self) -> Option<char> {
         self.chars.peek().cloned()
+    }
+    fn peek_nth_char(&mut self, n: usize) -> Option<char> {
+        self.chars.peek_nth(n).cloned()
     }
 
     fn lex_crlf(&mut self) -> Option<Token> {
@@ -265,6 +274,24 @@ impl<'a> Lexer<'a> {
 
         let mut is_floating_point = false;
         while let Some(ch) = self.peek_char() {
+            if ch == '0' {
+                let prefix = self.peek_nth_char(1);
+                if let Some(prefix) = prefix {
+                    match prefix {
+                        'x' => { return self.lex_non_decimal_literal(num, NumberLiteralType::HexadecimalInteger); },
+                        'o' => { return self.lex_non_decimal_literal(num, NumberLiteralType::OctalInteger); },
+                        'b' => { return self.lex_non_decimal_literal(num, NumberLiteralType::BinaryInteger); },
+                        '.' => {}, // ignore
+                        _ => {
+                            if let Some(ch) = self.peek_nth_char(2){
+                                if ch.is_digit(16) {
+                                    return Err(LexerError::UnexpectedCharacterLexingNonDecimalNumberLiteral(self.last_token_end))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             if ch.is_digit(10) {
                 num.push(ch);
                 self.advance();
@@ -283,7 +310,23 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
-        Ok(Token::number_literal(num, (self.last_token_end, self.location).into()))
+        Ok(Token::integer(num, (self.last_token_end, self.location).into()))
+    }
+
+    fn lex_non_decimal_literal(&mut self, mut num: String, literal_type: NumberLiteralType) -> LexerResult {
+        self.advance_n(2);
+        while let Some(ch) = self.peek_char() {
+            if ch.is_digit(literal_type.get_radix()) {
+                num.push(ch);
+                self.advance();
+            } else if ch == '_' {
+                self.advance();
+                continue;
+            } else {
+                break;
+            }
+        }
+        return Ok(Token::number_literal(num, literal_type, (self.last_token_end, self.location).into()));
     }
 
     fn lex_ident(&mut self) -> Token {

@@ -625,10 +625,12 @@ impl Parser {
                 self.unwrap_current_token().unwrap_value(),
             ));
         }
-        if self.matches(TokenType::NumberLiteral) {
+        if self.peek().is_some_and(|t|t.is_number_literal()) {
+            self.advance();
             debug!("Ok, returning number literal expr");
+            let token = self.unwrap_current_token();
             return Ok(Expr::NumberLiteral(
-                self.unwrap_current_token().unwrap_value(),
+                token.unwrap_value(), token.r#type.try_into().unwrap()
             ));
         }
         if self.matches(TokenType::OpenParen) {

@@ -1,6 +1,6 @@
 use std::{fmt::Display};
 
-use crate::{debug_utils::create_indent, token::Token, ModIdent};
+use crate::{debug_utils::create_indent, token::{NumberLiteralType, Token}, ModIdent};
 
 #[derive(Debug, Clone)]
 pub enum Expr {
@@ -22,7 +22,7 @@ pub enum Expr {
         ident: String,
     },
 
-    NumberLiteral(String),
+    NumberLiteral(String, NumberLiteralType),
 
     StringLiteral(String),
     Unary(Token, Box<Expr>), // Operator followed by another expr
@@ -85,8 +85,8 @@ impl Expr {
                     arg.display_inner(depth, result);
                 }
             }
-            Expr::NumberLiteral(num) => {
-                result.push_str(&format!("NumberLiteral: {}", num));
+            Expr::NumberLiteral(num, r#type) => {
+                result.push_str(&format!("NumberLiteral: {} {}", num, r#type));
             }
             Expr::StringLiteral(str) => {
                 result.push_str(&format!("StringLiteral: {}", str.escape_default().to_string()));

@@ -15,6 +15,7 @@ pub enum LexerError {
     InvalidCharacter(char),
     UnknownEscapeCharacter,
     MultiDecimalPointInNumberLiteral,
+    UnexpectedCharacterLexingNonDecimalNumberLiteral(CodeLocation),
     UnknownToken,
 }
 
