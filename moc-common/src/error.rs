@@ -14,6 +14,7 @@ pub enum LexerError {
     UnterminatedStringLiteral(CodeLocation),
     InvalidCharacter(char),
     UnknownEscapeCharacter,
+    MultiDecimalPointInNumberLiteral,
     UnknownToken,
 }
 

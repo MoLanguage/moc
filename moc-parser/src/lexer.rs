@@ -177,7 +177,7 @@ impl<'a> Lexer<'a> {
                     '+' | '-' | '*' | '%' | '&' | '|' | '~' | '^' | '<' | '>' => {
                         break self.lex_operator(ch);
                     }
-                    '0'..='9' => break Ok(self.lex_number()),
+                    '0'..='9' => break self.lex_number(),
                     'a'..='z' | 'A'..='Z' | '_' => break Ok(self.lex_ident()),
                     '\"' => break self.lex_string_literal(),
                     _ => {
@@ -260,13 +260,22 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn lex_number(&mut self) -> Token {
+    fn lex_number(&mut self) -> LexerResult {
         let mut num = String::new();
 
+        let mut is_floating_point = false;
         while let Some(ch) = self.peek_char() {
             if ch.is_digit(10) {
                 num.push(ch);
                 self.advance();
+            } else if ch == '.' {
+                if !is_floating_point {
+                    is_floating_point = true;
+                    num.push(ch);
+                    self.advance();
+                } else {
+                    return Err(LexerError::MultiDecimalPointInNumberLiteral)
+                }
             } else if ch == '_' {
                 self.advance();
                 continue;
@@ -274,7 +283,7 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
-        Token::number_literal(num, (self.last_token_end, self.location).into())
+        Ok(Token::number_literal(num, (self.last_token_end, self.location).into()))
     }
 
     fn lex_ident(&mut self) -> Token {
