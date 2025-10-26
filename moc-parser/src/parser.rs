@@ -59,6 +59,7 @@ impl Parser {
     }
 
     /// Advances n times.
+    #[allow(dead_code)]
     fn advance_n(&mut self, n: usize) {
         for _ in 0..n {
             self.advance();
@@ -101,6 +102,7 @@ impl Parser {
         self.token_stream.peek()
     }
 
+    #[allow(dead_code)]
     fn peek_nth(&mut self, n: usize) -> Option<&Token> {
         self.token_stream.peek_nth(n) // TODO: maybe check if this causes problems at the end of files...
     }
@@ -646,34 +648,6 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_fn_call_field_access(
-        &mut self,
-        called_on: Expr,
-    ) -> Result<Option<DotExpr>, ParserError> {
-        if self.matches(TokenType::Ident) {
-            let mut ident = self.unwrap_current_token().unwrap_value();
-            let mut mod_ident = None;
-            if self.matches(TokenType::Colon) {
-                (ident, mod_ident) = self.parse_module_prefix(ident)?;
-            }
-
-            if self.matches(TokenType::OpenParen) {
-                let fn_call = self.parse_fn_call(ident, mod_ident)?;
-                debug!("Ok, returning dotexpr function call");
-                return Ok(Some(DotExpr::FnCall {
-                    called_on: Box::new(called_on),
-                    fn_call,
-                }));
-            }
-            debug!("Ok, returning dotexpr struct field access");
-            return Ok(Some(DotExpr::FieldAccess {
-                called_on: Box::new(called_on),
-                field_ident: ident,
-            }));
-        }
-        Ok(None)
-    }
-
     fn parse_fn_call_var_expr(&mut self) -> Result<Option<Expr>, ParserError> {
         if self.matches(TokenType::Ident) {
             let mut ident = self.unwrap_current_token().unwrap_value();
@@ -753,7 +727,8 @@ impl Parser {
         false
     }
 
-    // peeks multiple tokens to see if they match the given token types in row.
+    /// peeks multiple tokens to see if they match the given token types in row.
+    #[allow(dead_code)]
     fn matches_in_row(&mut self, tokens: &[TokenType]) -> bool {
         for (n, token_type) in tokens.iter().enumerate() {
             if let Some(peeked_token) = self.peek_nth(n) {
@@ -767,6 +742,7 @@ impl Parser {
         true
     }
 
+    #[allow(dead_code)]
     fn matches_predicate<P>(&mut self, predicate: P) -> bool
     where
         P: FnOnce(&mut Parser) -> bool,
