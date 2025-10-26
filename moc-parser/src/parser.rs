@@ -322,9 +322,9 @@ impl Parser {
     }
     /*
     Parses statements of this form:
-    a int32 := 10 | DeclAssignmt
+    a i32 := 10 | DeclAssignmt
     a := 10       | DeclAssignmt (no type identifier. type to be inferred)
-    a int32       | Decl
+    a i32       | Decl
     a = 10        | Assignmt
      */
     fn parse_var_decl_assignmt(&mut self) -> Result<Stmt, ParserError> {
@@ -456,7 +456,6 @@ impl Parser {
     struct Foo {}
      */
     fn parse_struct_decl(&mut self) -> Result<Decl, ParserError> {
-        let decl;
         self.advance();
         self.try_consume_token(TokenType::Ident, "Expected struct identifier")?;
         let struct_ident = self.unwrap_current_token().unwrap_value();
