@@ -1,7 +1,7 @@
 use clap::Parser;
 use moc_common::{debug_utils};
 use moc_main::CompilerOptions;
-use ron::{extensions::Extensions, ser::PrettyConfig};
+use ron::{ser::PrettyConfig};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]

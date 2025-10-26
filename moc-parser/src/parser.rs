@@ -1,7 +1,7 @@
 use std::{collections::VecDeque, vec::IntoIter};
 
 use itertools::{PeekNth, peek_nth};
-use log::{debug, warn};
+use log::debug;
 use moc_common::{
     CodeBlock, ModIdent, TypedVar,
     ast::Ast,
