@@ -1,8 +1,10 @@
 use std::fmt::Display;
 
+use serde::Serialize;
+
 use crate::{debug_utils::create_indent, expr::Expr, BinaryOp, CodeBlock};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub enum Stmt {
     Print(Expr), // probably dont wanna have this as inbuilt function
     // a int32 (declaring variable)

@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
 use derive_more::Display;
+use serde::Serialize;
 
 use crate::{BinaryOp, CodeSpan};
 
@@ -11,7 +12,7 @@ macro_rules! token {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Token {
     pub r#type: TokenType,
     pub value: Option<String>,
@@ -27,7 +28,7 @@ impl Display for Token {
         }
     }
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Display)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, Serialize)]
 pub enum TokenType {
     AddAssign,           // +=
     Ampersand,           // &
@@ -95,7 +96,7 @@ pub enum TokenType {
     Use,
 }
 
-#[derive(Debug, Clone, Display)]
+#[derive(Debug, Clone, Display, Serialize)]
 pub enum NumberLiteralType {
     DecimalInteger,
     DecimalPoint, // like floating point

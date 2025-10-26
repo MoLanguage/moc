@@ -1,10 +1,12 @@
 use std::{collections::VecDeque, fmt::Display};
 
+use serde::Serialize;
+
 use crate::{
     debug_utils::create_indent, token::{NumberLiteralType, Token}, ModIdent
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum Expr {
     // Expressions
     Binary {
@@ -28,7 +30,7 @@ pub enum Expr {
     Empty
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct FnCall {
     pub mod_ident: Option<ModIdent>,
     pub ident: String,
@@ -49,7 +51,7 @@ impl FnCall {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum DotExpr {
     FnCall { called_on: Box<Expr>, fn_call: FnCall },
     FieldAccess { called_on: Box<Expr>, field_ident: String },

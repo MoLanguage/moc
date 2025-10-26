@@ -1,8 +1,10 @@
 use std::fmt::Display;
 
+use serde::Serialize;
+
 use crate::{debug_utils::create_indent, CodeBlock, ModIdent, TypedVar};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum Decl {
     Fn {
         // function declaration

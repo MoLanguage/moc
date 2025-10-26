@@ -12,10 +12,11 @@ use std::{
 };
 
 use derive_more::Display;
+use serde::Serialize;
 
 use crate::stmt::Stmt;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct CodeLocation {
     pub line: u32,
     pub column: u32,
@@ -39,7 +40,7 @@ impl Display for CodeLocation {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, Serialize)]
 pub struct CodeSpan {
     pub start: CodeLocation,
     pub end: CodeLocation,
@@ -64,7 +65,7 @@ impl From<(CodeLocation, CodeLocation)> for CodeSpan {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CodeBlock {
     pub stmts: Vec<Stmt>,
 }
@@ -75,7 +76,7 @@ impl CodeBlock {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct ModIdent {
     pub path: VecDeque<String>,
 }
@@ -121,7 +122,7 @@ impl Display for ModIdent {
     }
 }
 
-#[derive(Clone, Copy, Debug, Display)]
+#[derive(Clone, Copy, Debug, Display, Serialize)]
 pub enum BinaryOp {
     Add,
     Sub,           // Subtract
@@ -136,7 +137,7 @@ pub enum BinaryOp {
     BitNot,        // Bitwise NOT
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct TypedVar {
     /// the variable's identifier
     ident: String,
