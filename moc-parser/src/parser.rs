@@ -1,18 +1,19 @@
-use std::{collections::VecDeque, iter::Peekable, vec::IntoIter};
+use std::{collections::VecDeque, vec::IntoIter};
 
-use log::debug;
+use itertools::{PeekNth, peek_nth};
+use log::{debug, warn};
 use moc_common::{
     CodeBlock, ModIdent, TypedVar,
     ast::Ast,
     decl::Decl,
     error::{ExprParseResult, ParseResult, ParserError},
-    expr::Expr,
+    expr::{DotExpr, Expr, FnCall},
     stmt::Stmt,
     token::{Token, TokenType},
 };
 
 pub struct Parser {
-    token_stream: Peekable<IntoIter<Token>>,
+    token_stream: PeekNth<IntoIter<Token>>,
     current_token: Option<Token>,
     ast: Ast,
 }
@@ -20,7 +21,7 @@ pub struct Parser {
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
         let parser = Self {
-            token_stream: tokens.into_iter().peekable(),
+            token_stream: peek_nth(tokens),
             current_token: None,
             ast: Ast::new(),
         };
@@ -48,31 +49,42 @@ impl Parser {
         if let Some(current_token) = self.current_token() {
             if let Some(peeked_token) = self.token_stream.peek().cloned() {
                 debug!(
-                    "{:?} advanced from {}, peeking {}",
+                    "{} advanced from {}, peeking {}",
                     std::panic::Location::caller(),
-                    current_token.r#type,
-                    peeked_token.r#type
+                    current_token,
+                    peeked_token
                 );
             }
         }
     }
 
+    /// Advances n times.
+    fn advance_n(&mut self, n: usize) {
+        for _ in 0..n {
+            self.advance();
+        }
+    }
+
     /// Skips tokens that are of the same type as given.
-    fn skip_tokens_of_type(&mut self, token_type: TokenType) {
+    fn skip(&mut self, token_type: TokenType) {
         loop {
             if let Some(token) = self.peek() {
                 if token.is_of_type(token_type) {
-                    debug!("Skipping token: {}", token);
+                    let token = token.clone();
                     self.advance();
+                    debug!("Skipped token: {}", token);
                 } else {
                     break;
                 }
-            }
+            } else {
+                break;
+            }  
         }
     }
+
     /// Skips tokens that are of any of the types given.
     #[allow(dead_code)]
-    fn skip_tokens_of_types(&mut self, token_types: &[TokenType]) {
+    fn skip_any(&mut self, token_types: &[TokenType]) {
         loop {
             if let Some(token) = self.peek() {
                 if token.is_of_types(token_types) {
@@ -86,13 +98,11 @@ impl Parser {
     }
 
     fn peek(&mut self) -> Option<&Token> {
-        self.token_stream.peek().and_then(|token| {
-            if token.r#type == TokenType::EndOfFile {
-                None
-            } else {
-                Some(token)
-            }
-        })
+        self.token_stream.peek()
+    }
+
+    fn peek_nth(&mut self, n: usize) -> Option<&Token> {
+        self.token_stream.peek_nth(n) // TODO: maybe check if this causes problems at the end of files...
     }
 
     pub fn parse(mut self) -> ParseResult {
@@ -155,7 +165,7 @@ impl Parser {
                 }
             }
         } else {
-            return ParserError::new("Expected module identifier", self.current_token.clone())
+            return ParserError::new("Expected module identifier", self.peek().cloned())
                 .wrap();
         }
         Ok(ModIdent::new(module_dirs))
@@ -218,7 +228,7 @@ impl Parser {
             return_type = Some(self.unwrap_current_token().unwrap_value());
         }
         // parse body / code
-        self.skip_tokens_of_type(TokenType::LineBreak);
+        self.skip(TokenType::LineBreak);
         let body = self.parse_code_block()?;
         let fn_decl = Decl::Fn {
             ident: fn_ident,
@@ -237,83 +247,69 @@ impl Parser {
         debug!("parsing code block");
         self.try_consume_token(TokenType::OpenBrace, "Expected open brace")?;
 
-        self.skip_tokens_of_type(TokenType::LineBreak); // move on if there's a linebreak.
-
-        // what can we expect within a cod  e block?
-        // variable declaration
-        // if statement
-        // for loop
-        // function call
-        // return statement
-
-        // what tokens can they each begin with?
-        // variable declaration: type identifier
-        // if statement: if
-        // for loop: for
-        // function call: identifier
-        // return statement: ret
+        self.skip(TokenType::LineBreak); // move on if there's a linebreak.
 
         let mut code_block = CodeBlock::new();
         loop {
-            if let Some(token) = self.peek().cloned() {
-                match token.r#type {
-                    // Problem to solve: Is a simple function call a statement or an expression?
-                    // We omit function call expressions for now.
-                    TokenType::Ident => {
-                        // ambiguity: function call vs variable declaration
-                        self.advance(); // advancing to be able to check if next token is a open parenthesis
-                        let mut ident = token.unwrap_value(); // save the identifier value
-                        let mut mod_ident = None;
-                        // parse module spec prefix
-                        if self.matches(TokenType::Colon) {
-                            (ident, mod_ident) = self.parse_module_prefix(ident)?;
-                        }
-                        if self.matches(TokenType::OpenParen) {
-                            let fn_call = self.parse_fn_call(ident, mod_ident)?;
-                            code_block.stmts.push(Stmt::Expr(fn_call));
-                        } else if self.matches_predicate(|parser| {
-                            parser.peek().is_some_and(|token| token.is_binary_op())
-                        }) {
-                            let operator = self.unwrap_current_token().r#type.try_into().unwrap();
-                            let value = self.parse_expression()?;
-                            code_block.stmts.push(Stmt::VarOperatorAssign {
-                                ident,
-                                operator,
-                                value,
-                            });
-                        } else {
-                            let stmt = self.parse_var_decl_assignmt()?;
-                            code_block.stmts.push(stmt);
-                        }
-                    }
-                    TokenType::For => code_block.stmts.push(self.parse_for_loop()?),
-                    TokenType::If => code_block.stmts.push(self.parse_if_else_stmt()?),
-                    TokenType::Ret => code_block.stmts.push(self.parse_ret_stmt()?),
-                    TokenType::CloseBrace => {
-                        self.advance();
-                        break;
-                    }
-                    TokenType::LineBreak => {
-                        self.advance();
-                        continue;
-                    }
-                    _ => {
-                        return ParserError::new(
-                            "Unexpected token parsing code block",
-                            Some(token),
-                        )
-                        .wrap();
-                    }
-                }
-            } else {
-                break;
+            if self.matches(TokenType::CloseBrace) {
+               self.skip(TokenType::LineBreak);
+               debug!("matched closebrace, returning codeblock");
+               return Ok(code_block)
             }
+            let stmt = self.parse_stmt()?;
+            code_block.stmts.push(stmt);
+            self.skip(TokenType::LineBreak);  
         }
-        Ok(code_block)
     }
 
+    fn parse_stmt(&mut self) -> Result<Stmt, ParserError> {
+        if let Some(token) = self.peek().cloned() {
+            match token.r#type {
+                TokenType::Ident => {
+                    // ambiguity: function call vs variable declaration
+                    self.advance(); // advancing to be able to check if next token is a open parenthesis
+                    let mut ident = token.unwrap_value(); // save the identifier value
+                    let mut mod_ident = None;
+                    // parse module spec prefix
+                    if self.matches(TokenType::Colon) {
+                        (ident, mod_ident) = self.parse_module_prefix(ident)?;
+                    }
+                    if self.matches(TokenType::OpenParen) {
+                        let fn_call = self.parse_fn_call(ident, mod_ident)?;
+                        return Ok(Stmt::Expr(Expr::FnCall(fn_call)));
+                    } else if self.peek().is_some_and(|token| token.is_binary_op()) {
+                        // e.g. a += 10
+                        self.advance();
+                        let operator = self.unwrap_current_token().r#type.try_into().unwrap();
+                        let value = self.parse_expression()?;
+                        return Ok(Stmt::VarOperatorAssign {
+                            ident,
+                            operator,
+                            value,
+                        });
+                    } else {
+                        let stmt = self.parse_var_decl_assignmt()?;
+                        return Ok(stmt);
+                    }
+                }
+                TokenType::For => return self.parse_for_loop(),
+                TokenType::If => return self.parse_if_else_stmt(),
+                TokenType::Ret => return self.parse_ret_stmt(),
+                _ => {
+                    return Ok(Stmt::Expr(self.parse_expression()?));
+                }
+            }
+        }
+        Err(ParserError::new(
+            "Couldn't parse statement",
+            self.current_token(),
+        ))
+    }
     /// Weird hacky function to get the module identifier from e.g. a function call with a prefix like this: std:io:print()
-    fn parse_module_prefix(&mut self, mut ident: String) -> Result<(String, Option<ModIdent>), ParserError> {
+    fn parse_module_prefix(
+        &mut self,
+        mut ident: String,
+    ) -> Result<(String, Option<ModIdent>), ParserError> {
         // has module identifier
         let mut module_ident0 = self.parse_module_identifier()?;
         module_ident0.path.push_front(ident); // already parsed Ident token becomes first piece of the module identifier
@@ -375,7 +371,7 @@ impl Parser {
         &mut self,
         fn_ident: String,
         mod_ident: Option<ModIdent>,
-    ) -> Result<Expr, ParserError> {
+    ) -> Result<FnCall, ParserError> {
         // parse arguments
         let mut args = Vec::new();
 
@@ -396,8 +392,8 @@ impl Parser {
                 .wrap();
             }
         }
-        let fn_call = Expr::FnCall {
-            mod_ident, // TODO: Parse module path or smthin
+        let fn_call = FnCall {
+            mod_ident, // TODO: Parse module path inside this method
             ident: fn_ident,
             args,
         };
@@ -454,11 +450,11 @@ impl Parser {
         self.advance();
         self.try_consume_token(TokenType::Ident, "Expected struct identifier")?;
         let struct_ident = self.unwrap_current_token().unwrap_value();
-        self.skip_tokens_of_type(TokenType::LineBreak);
+        self.skip(TokenType::LineBreak);
         self.try_consume_token(TokenType::OpenBrace, "Expected open brace")?;
         let mut fields = Vec::new();
         loop {
-            self.skip_tokens_of_type(TokenType::LineBreak);
+            self.skip(TokenType::LineBreak);
             if self.matches(TokenType::CloseBrace) {
                 break; // empty struct case
             }
@@ -497,7 +493,7 @@ impl Parser {
         debug!("parsing equality expr {}", self.parser_state_dbg_info());
 
         let mut expr = self.parse_comparison_expr()?;
-        if self.matches_any(&[TokenType::NotEqualTo, TokenType::EqualTo]) {
+        while self.matches_any(&[TokenType::NotEqualTo, TokenType::EqualTo]) {
             let operator = self.unwrap_current_token();
             println!("equality expr: chosen operator {}", operator.r#type);
             let right = self.parse_comparison_expr()?;
@@ -583,33 +579,125 @@ impl Parser {
                 .current_token
                 .clone()
                 .expect("Operator should be here.");
-            let right = self.parse_primary_expr()?;
+            let right = self.parse_dot_expr()?;
             println!("Ok, returning unary expr");
             return Ok(Expr::unary(operator, right));
         }
-        self.parse_primary_expr()
+        self.parse_dot_expr()
     }
-    // literals, variables and function calls
-    fn parse_primary_expr(&mut self) -> ExprParseResult {
-        debug!("parsing primary expr {}", self.parser_state_dbg_info());
-        //dbg!(&self.current_token);
-        //dbg!(&self.peek());
+
+    /*
+    * fn parse_dot_expr(&mut self) -> ExprParseResult {
+        let mut chain = VecDeque::new();
+        //<expr>(.<fn_call>|<field>)*
+        let mut first = true;
+        loop {
+            let prefix_expr = self.parse_expression()?;
+            if self.matches(TokenType::Dot) {
+                self.advance();
+                let expr = self.parse_fn_call_field_access(prefix_expr)?;
+                match expr {
+                    None => {
+                        return Err(ParserError::new(
+                            "Expected function call or field access",
+                            self.current_token(),
+                        ));
+                    }
+                    Some(expr) => {
+                        chain.push_back(expr);
+                    }
+                }
+            } else {
+                if first {
+                    return self.parse_primary_expr();
+                } else {
+                    return Ok(Expr::DotExprChain(chain));
+                }
+            }
+            first = false;
+        }
+    }
+    */
+
+    fn parse_dot_expr(&mut self) -> ExprParseResult {
+        // start from the base (primary expression)
+        let mut expr = self.parse_primary_expr()?;
+
+        // then, while there's a '.', chain
+        while self.matches(TokenType::Dot) {
+            // we're already past the '.'
+            self.try_consume_token(TokenType::Ident, "Expected identifier after '.'")?;
+            let ident = self.unwrap_current_token().unwrap_value();
+
+            if self.matches(TokenType::OpenParen) {
+                let fn_call = self.parse_fn_call(ident, None)?;
+                expr = Expr::DotExpr(DotExpr::FnCall {
+                    called_on: Box::new(expr),
+                    fn_call,
+                });
+            } else {
+                expr = Expr::DotExpr(DotExpr::FieldAccess {
+                    called_on: Box::new(expr),
+                    field_ident: ident,
+                });
+            }
+        }
+
+        Ok(expr)
+    }
+
+    fn parse_fn_call_field_access(
+        &mut self,
+        called_on: Expr,
+    ) -> Result<Option<DotExpr>, ParserError> {
         if self.matches(TokenType::Ident) {
             let mut ident = self.unwrap_current_token().unwrap_value();
             let mut mod_ident = None;
             if self.matches(TokenType::Colon) {
                 (ident, mod_ident) = self.parse_module_prefix(ident)?;
             }
-            //TODO: Parse function calls
+
             if self.matches(TokenType::OpenParen) {
                 let fn_call = self.parse_fn_call(ident, mod_ident)?;
-                return Ok(fn_call);
+                debug!("Ok, returning dotexpr function call");
+                return Ok(Some(DotExpr::FnCall {
+                    called_on: Box::new(called_on),
+                    fn_call,
+                }));
+            }
+            debug!("Ok, returning dotexpr struct field access");
+            return Ok(Some(DotExpr::FieldAccess {
+                called_on: Box::new(called_on),
+                field_ident: ident,
+            }));
+        }
+        Ok(None)
+    }
+
+    fn parse_fn_call_var_expr(&mut self) -> Result<Option<Expr>, ParserError> {
+        if self.matches(TokenType::Ident) {
+            let mut ident = self.unwrap_current_token().unwrap_value();
+            let mut mod_ident = None;
+            if self.matches(TokenType::Colon) {
+                (ident, mod_ident) = self.parse_module_prefix(ident)?;
+            }
+
+            if self.matches(TokenType::OpenParen) {
+                let fn_call = self.parse_fn_call(ident, mod_ident)?;
+                return Ok(Some(Expr::FnCall(fn_call)));
             }
             debug!("Ok, returning variable ident expr");
-            return Ok(Expr::Variable {
-                ident,
-                mod_ident,
-            });
+            return Ok(Some(Expr::Variable { ident, mod_ident }));
+        }
+        Ok(None)
+    }
+
+    // literals, variables and function calls
+    fn parse_primary_expr(&mut self) -> ExprParseResult {
+        debug!("parsing primary expr {}", self.parser_state_dbg_info());
+
+        if let Some(fn_call_var_expr) = self.parse_fn_call_var_expr()? {
+            return Ok(fn_call_var_expr);
         }
         if self.matches(TokenType::True) {
             debug!("Ok, returning boolean literal expr");
@@ -625,21 +713,22 @@ impl Parser {
                 self.unwrap_current_token().unwrap_value(),
             ));
         }
-        if self.peek().is_some_and(|t|t.is_number_literal()) {
+        if self.peek().is_some_and(|t| t.is_number_literal()) {
             self.advance();
             debug!("Ok, returning number literal expr");
             let token = self.unwrap_current_token();
             return Ok(Expr::NumberLiteral(
-                token.unwrap_value(), token.r#type.try_into().unwrap()
+                token.unwrap_value(),
+                token.r#type.try_into().unwrap(),
             ));
         }
         if self.matches(TokenType::OpenParen) {
             let expr = self.parse_expression()?;
-            self.try_consume_token(TokenType::CloseParen, "Expected '(' after expression.")?;
+            self.try_consume_token(TokenType::CloseParen, "Expected ')' after expression.")?;
             debug!("Ok, returning grouping expr");
             return Ok(Expr::Grouping(Box::new(expr)));
         }
-
+        //return Ok(Expr::Empty);
         ParserError::new("Expected an expression", self.peek().cloned()).wrap()
     }
 
@@ -653,12 +742,29 @@ impl Parser {
         false
     }
 
+    #[track_caller]
     fn matches(&mut self, token: TokenType) -> bool {
+        
+        debug!("{}", std::panic::Location::caller());
         if self.is_next_of_type(token) {
             self.advance();
             return true;
         }
         false
+    }
+
+    // peeks multiple tokens to see if they match the given token types in row.
+    fn matches_in_row(&mut self, tokens: &[TokenType]) -> bool {
+        for (n, token_type) in tokens.iter().enumerate() {
+            if let Some(peeked_token) = self.peek_nth(n) {
+                if &peeked_token.r#type == token_type {
+                    continue;
+                } else {
+                    return false;
+                }
+            }
+        }
+        true
     }
 
     fn matches_predicate<P>(&mut self, predicate: P) -> bool

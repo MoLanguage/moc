@@ -3,6 +3,7 @@ use std::io;
 use crate::{ast::Ast, expr::Expr, token::Token, CodeLocation};
 
 // TODO: decide how to unify errors with CodeLocations, so they can be displayed in error messages properly
+#[derive(Debug)]
 pub enum CompilerError {
     ParserError(ParserError),
     LexerError(LexerError),
@@ -26,14 +27,14 @@ pub type ExprParseResult = Result<Expr, ParserError>;
 #[derive(Debug)]
 pub struct ParserError {
     pub msg: String,
-    pub last_token: Option<Token>,
+    pub peeking: Option<Token>,
 }
 
 impl ParserError {
-    pub fn new(msg: &str, last_token: Option<Token>) -> Self {
+    pub fn new(msg: &str, peeking: Option<Token>) -> Self {
         Self {
             msg: msg.into(),
-            last_token,
+            peeking,
         }
     }
 

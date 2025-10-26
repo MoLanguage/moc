@@ -421,6 +421,7 @@ dependencies = [
 name = "moc-main"
 version = "0.0.0"
 dependencies = [
+ "log",
  "moc-common",
  "moc-parser",
 ]

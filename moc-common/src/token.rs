@@ -21,7 +21,7 @@ pub struct Token {
 impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(value) = self.value() {
-            write!(f, "{} from {} to {}, value: \"{}\"", self.r#type, self.span.start, self.span.end, value)
+            write!(f, "{} from {} to {}, value: \"{}\"", self.r#type, self.span.start, self.span.end, value.escape_default())
         } else {
             write!(f, "{} from {} to {}", self.r#type, self.span.start, self.span.end)
         }
@@ -246,6 +246,7 @@ impl TryFrom<TokenType> for BinaryOp {
             TokenType::SubAssign | TokenType::Minus => Ok(BinaryOp::Sub),
             TokenType::MultAssign | TokenType::Star => Ok(BinaryOp::Mult),
             TokenType::DivAssign | TokenType::Slash => Ok(BinaryOp::Div),
+            TokenType::ModAssign | TokenType::Percent => Ok(BinaryOp::Mod),
             TokenType::BitAndAssign | TokenType::Ampersand => Ok(BinaryOp::BitAnd),
             TokenType::BitXorAssign | TokenType::Caret => Ok(BinaryOp::BitXor),
             TokenType::BitOrAssign | TokenType::Pipe => Ok(BinaryOp::BitOr),

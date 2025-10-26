@@ -1,6 +1,7 @@
 use std::str::Chars;
 
-use itertools::{peek_nth, PeekNth};
+use itertools::{PeekNth, peek_nth};
+use log::debug;
 use moc_common::error::{LexerError, LexerResult};
 use moc_common::token::{NumberLiteralType, Token, TokenType};
 use moc_common::{CodeLocation, CodeSpan};
@@ -61,12 +62,18 @@ impl<'a> Lexer<'a> {
         self.location.column = 1;
         self.location.line += 1;
     }
+    
+    fn update_span(&mut self) {
+        self.last_token_end = self.location;
+    }
 
     fn advance(&mut self) -> Option<char> {
         self.location.column += 1;
-        self.chars.next()
+        let char = self.chars.next();
+        debug!("lexing char: {}", char.unwrap_or('E').escape_default());
+        char
     }
-    
+
     fn advance_n(&mut self, n: usize) {
         for _ in 0..n {
             self.advance();
@@ -80,24 +87,27 @@ impl<'a> Lexer<'a> {
         self.chars.peek_nth(n).cloned()
     }
 
-    fn lex_crlf(&mut self) -> Option<Token> {
+    fn lex_crlf(&mut self) -> Result<Token, LexerError> {
         self.advance();
         if self.peek_char() == Some('\n') {
             self.advance();
+            self.update_span();
             self.count_line_break();
-            return Some(token!(self, LineBreak));
+            return ok_token!(self, LineBreak);
         }
-        None
+        // Only single \r found. Maybe emit warning in the future
+        Err(LexerError::UnknownToken)
     }
 
     fn lex_lf(&mut self) -> Token {
         self.advance();
+        self.update_span();
         self.count_line_break();
         token!(self, LineBreak)
     }
 
     pub fn next_token(&mut self) -> Result<Token, LexerError> {
-        self.last_token_end = self.location;
+        self.update_span();
         let lexer_result = loop {
             if let Some(ch) = self.peek_char() {
                 match ch {
@@ -125,27 +135,21 @@ impl<'a> Lexer<'a> {
                         self.advance();
                         if self.peek_char() == Some('/') {
                             // two slashes means a comment
-                            self.skip_comment();
-                            continue;
+                            if let Some(token) = self.skip_comment() {
+                                return token
+                            } else {
+                                continue;
+                            }
                         }
                         break self.lex_operator(ch); // if we have a single slash, it's a divide operator
                     }
                     ' ' | '\t' => {
                         self.advance();
-                        self.last_token_end = self.location; // for every 'skipped' chararacter that doesnt result a token, we need to move the "last_token_end" cursor to the lexer's position.
+                        self.update_span(); // for every 'skipped' chararacter that doesnt result a token, we need to move the "last_token_end" cursor to the lexer's position.
                         continue;
                     } // Skip non-relevant whitespace
-                    '\r' => {
-                        if let Some(token) = self.lex_crlf() {
-                            break Ok(token);
-                        } else {
-                            // maybe emit warning here if only single \r found
-                            self.last_token_end = self.location;
-                            continue;
-                        };
-                    }
-                    '\n' => {
-                        break Ok(self.lex_lf());
+                    '\r' | '\n' => {
+                        return self.lex_linebreak(ch);
                     }
                     '{' => {
                         self.advance();
@@ -194,11 +198,18 @@ impl<'a> Lexer<'a> {
                     } // TODO: return proper LexerError
                 }
             } else {
-                return ok_token!(self, EndOfFile)
+                return ok_token!(self, EndOfFile);
             }
         };
 
         return lexer_result;
+    }
+
+    fn lex_linebreak(&mut self, ch: char) -> LexerResult {
+        if ch == '\n' {
+            return Ok(self.lex_lf());
+        }
+        self.lex_crlf()
     }
 
     fn lex_operator(&mut self, ch: char) -> LexerResult {
@@ -273,26 +284,16 @@ impl<'a> Lexer<'a> {
         let mut num = String::new();
 
         let mut is_floating_point = false;
+        let mut first_iter = true;
         while let Some(ch) = self.peek_char() {
-            if ch == '0' {
-                let prefix = self.peek_nth_char(1);
-                if let Some(prefix) = prefix {
-                    match prefix {
-                        'x' => { return self.lex_non_decimal_literal(num, NumberLiteralType::HexadecimalInteger); },
-                        'o' => { return self.lex_non_decimal_literal(num, NumberLiteralType::OctalInteger); },
-                        'b' => { return self.lex_non_decimal_literal(num, NumberLiteralType::BinaryInteger); },
-                        '.' => {}, // ignore
-                        _ => {
-                            if let Some(ch) = self.peek_nth_char(2){
-                                if ch.is_digit(16) {
-                                    return Err(LexerError::UnexpectedCharacterLexingNonDecimalNumberLiteral(self.last_token_end))
-                                }
-                            }
-                        }
-                    }
+            if first_iter && ch == '0' {
+                if let Some(lex_result) = self.lex_non_decimal_literal(&mut num) {
+                    return lex_result;
+                } else {
+                    num.push(ch);
+                    self.advance();
                 }
-            }
-            if ch.is_digit(10) {
+            } else if ch.is_digit(10) {
                 num.push(ch);
                 self.advance();
             } else if ch == '.' {
@@ -301,19 +302,57 @@ impl<'a> Lexer<'a> {
                     num.push(ch);
                     self.advance();
                 } else {
-                    return Err(LexerError::MultiDecimalPointInNumberLiteral)
+                    return Err(LexerError::MultiDecimalPointInNumberLiteral);
                 }
             } else if ch == '_' {
                 self.advance();
-                continue;
             } else {
                 break;
             }
+            first_iter = false;
         }
-        Ok(Token::integer(num, (self.last_token_end, self.location).into()))
+        Ok(Token::integer(
+            num,
+            (self.last_token_end, self.location).into(),
+        ))
     }
 
-    fn lex_non_decimal_literal(&mut self, mut num: String, literal_type: NumberLiteralType) -> LexerResult {
+    fn lex_non_decimal_literal(&mut self, num: &mut String) -> Option<Result<Token, LexerError>> {
+        let prefix = self.peek_nth_char(1);
+        if let Some(prefix) = prefix {
+            match prefix {
+                'x' => {
+                    return Some(self.lex_non_decimal_literal_value(
+                        num,
+                        NumberLiteralType::HexadecimalInteger,
+                    ));
+                }
+                'o' => {
+                    return Some(self
+                        .lex_non_decimal_literal_value(num, NumberLiteralType::OctalInteger));
+                }
+                'b' => {
+                    return Some(self
+                        .lex_non_decimal_literal_value(num, NumberLiteralType::BinaryInteger));
+                }
+                '.' => { return None }
+                _ => {
+                    if let Some(ch) = self.peek_nth_char(2) {
+                        if ch.is_digit(16) {
+                            return Some(Err(LexerError::UnexpectedCharacterLexingNonDecimalNumberLiteral(self.last_token_end)));
+                        }
+                    }
+
+                }
+            }
+        }
+        None
+    }
+    fn lex_non_decimal_literal_value(
+        &mut self,
+        num: &mut String,
+        literal_type: NumberLiteralType,
+    ) -> LexerResult {
         self.advance_n(2);
         while let Some(ch) = self.peek_char() {
             if ch.is_digit(literal_type.get_radix()) {
@@ -326,7 +365,11 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
-        return Ok(Token::number_literal(num, literal_type, (self.last_token_end, self.location).into()));
+        return Ok(Token::number_literal(
+            num.clone(),
+            literal_type,
+            (self.last_token_end, self.location).into(),
+        ));
     }
 
     fn lex_ident(&mut self) -> Token {
@@ -360,14 +403,20 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn skip_comment(&mut self) {
+    // Skips comment and returns a linebreak token if the comment ends with one.
+    // maybe this is over-engineered because comments always end with a linebreak unless they are the last thing in a source file. But in that case it's irrelevant, maybe?
+    fn skip_comment(&mut self) -> Option<Result<Token, LexerError>> {
+        let mut line_break = None;
         while let Some(ch) = self.peek_char() {
-            self.advance();
             if ch == '\r' || ch == '\n' {
+                line_break = Some(self.lex_linebreak(ch));
                 break;
+            } else {
+                self.advance();
             }
         }
-        self.last_token_end = self.location;
+        self.update_span();
+        line_break
     }
 
     // still need to add escaping of special characters. could do that later tho.

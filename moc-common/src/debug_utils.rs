@@ -1,11 +1,8 @@
-use crate::token::{Token, TokenType};
+use crate::token::{Token};
 
 pub fn print_tokens(tokens: &[Token]) {
     for token in tokens {
         println!("{}", token);
-        if token.r#type == TokenType::EndOfFile {
-            break;
-        }
     }
 }
 

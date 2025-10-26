@@ -1,6 +1,8 @@
-use std::{fmt::Display};
+use std::{collections::VecDeque, fmt::Display};
 
-use crate::{debug_utils::create_indent, token::{NumberLiteralType, Token}, ModIdent};
+use crate::{
+    debug_utils::create_indent, token::{NumberLiteralType, Token}, ModIdent
+};
 
 #[derive(Debug, Clone)]
 pub enum Expr {
@@ -10,22 +12,47 @@ pub enum Expr {
         operator: Token,
         right_expr: Box<Expr>,
     },
+    DotExpr(DotExpr),
+    DotExprChain(VecDeque<DotExpr>),
     BoolLiteral(bool),
-    FnCall {
-        mod_ident: Option<ModIdent>,
-        ident: String,
-        args: Vec<Expr>,
-    },
+    FnCall(FnCall),
     Grouping(Box<Expr>),
     Variable {
         mod_ident: Option<ModIdent>, // for e.g. constants imported from other module
         ident: String,
     },
-
     NumberLiteral(String, NumberLiteralType),
 
     StringLiteral(String),
     Unary(Token, Box<Expr>), // Operator followed by another expr
+    Empty
+}
+
+#[derive(Debug, Clone)]
+pub struct FnCall {
+    pub mod_ident: Option<ModIdent>,
+    pub ident: String,
+    pub args: Vec<Expr>,
+}
+
+impl FnCall {
+    pub fn display_inner(&self, depth: usize, result: &mut String) {
+        result.push_str(&create_indent(depth));
+        if let Some(mod_ident) = &self.mod_ident {
+            result.push_str(&format!("FnCall: {}:\"{}\"", mod_ident, self.ident));
+        } else {
+            result.push_str(&format!("FnCall: \"{}\"", self.ident));
+        }
+        for arg in &self.args {
+            arg.display_inner(depth, result);
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum DotExpr {
+    FnCall { called_on: Box<Expr>, fn_call: FnCall },
+    FieldAccess { called_on: Box<Expr>, field_ident: String },
 }
 
 impl Expr {
@@ -63,33 +90,52 @@ impl Expr {
                 right_expr.display_inner(depth, result);
             }
             Expr::BoolLiteral(bool) => result.push_str(&bool.to_string()),
+            Expr::DotExpr(dot_expr) => {
+                result.push_str(&format!("DotExpr: "));
+                match dot_expr {
+                    DotExpr::FnCall{fn_call, called_on} => {
+                        result.push_str(&format!("{}Called on: ", &create_indent(depth + 1)));
+                        called_on.display_inner(depth + 1, result);
+                        fn_call.display_inner(depth + 1, result);
+                    },
+                    DotExpr::FieldAccess { field_ident, called_on } => {
+                        result.push_str(&format!("{}Called on: ", &create_indent(depth + 1)));
+                        called_on.display_inner(depth + 1, result);
+                        result.push_str(&format!("{}Field access: \"{}\"", create_indent(depth + 1), field_ident));
+                    }
+                }
+            }
+            Expr::DotExprChain(chain) => {
+                result.push_str(&format!("DotExprChain"));
+                for expr in chain {
+                    Expr::DotExpr(expr.clone()).display_inner(depth, result);
+                }
+            }
+            Expr::Empty => {
+                result.push_str(&format!("{}Empty", create_indent(depth)));
+            }
             Expr::Grouping(astnode) => {
-                result.push_str("Grouping: ");
+                result.push_str(&format!("{}Grouping: ", create_indent(depth)));
                 astnode.display_inner(depth, result);
             }
-            Expr::Variable{ ident, mod_ident } => {
+            Expr::Variable { ident, mod_ident } => {
                 if let Some(mod_ident) = mod_ident {
                     result.push_str(&format!("Variable: {}:\"{}\"", mod_ident, ident));
                 } else {
                     result.push_str(&format!("Variable: \"{}\"", ident));
                 }
-                
             }
-            Expr::FnCall { mod_ident, ident, args } => {
-                if let Some(mod_ident) = mod_ident {
-                    result.push_str(&format!("FnCall: {}:\"{}\"", mod_ident, ident));
-                } else {
-                    result.push_str(&format!("FnCall: {}", ident));
-                }
-                for arg in args {
-                    arg.display_inner(depth, result);
-                }
+            Expr::FnCall(fn_call) => {
+                fn_call.display_inner(depth, result);
             }
             Expr::NumberLiteral(num, r#type) => {
                 result.push_str(&format!("NumberLiteral: {} {}", num, r#type));
             }
             Expr::StringLiteral(str) => {
-                result.push_str(&format!("StringLiteral: {}", str.escape_default().to_string()));
+                result.push_str(&format!(
+                    "StringLiteral: {}",
+                    str.escape_default().to_string()
+                ));
             }
             Expr::Unary(op, astnode) => {
                 result.push_str(&format!("Unary: {:?}", op));

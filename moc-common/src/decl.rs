@@ -47,7 +47,7 @@ impl Decl {
             } => {
                 result.push_str(&format!("FnDecl: {}(", ident));
                 for (i, param) in params.iter().enumerate() {
-                    result.push_str(&format!("{} {}", param.type_ident, param.ident));
+                    result.push_str(&format!("{} {}", param.ident, param.type_ident));
                     if i < params.len() - 1 {
                         result.push_str(", ");
                     }

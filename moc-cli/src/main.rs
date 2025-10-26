@@ -1,5 +1,5 @@
 use clap::Parser;
-use moc_common::{debug_utils, error::CompilerError};
+use moc_common::{debug_utils};
 use moc_main::CompilerOptions;
 
 #[derive(Parser, Debug)]
@@ -18,32 +18,24 @@ struct Args {
 
 fn main() {
     simple_logger::init_with_env().unwrap(); // just for debug toggleable debug logging
-    
+
     let args = Args::parse();
     let mut options = CompilerOptions::default();
     options.emit_tokens = args.print_tokens;
     options.emit_ast = args.print_ast;
-    match moc_main::compile_file(args.path, options) {
-        Ok(meta) => {
-            if let Some(ast) = meta.ast {
-                for stmt in ast {
-                    println!("{}", stmt);
-                }
-            }
-            if let Some(tokens) = meta.tokens {
-                debug_utils::print_tokens(&tokens);
-            }
+    let result = moc_main::compile_file(args.path, options);
+
+    if let Some(tokens) = result.tokens {
+        debug_utils::print_tokens(&tokens);
+    }
+    if let Some(ast) = result.ast {
+        for stmt in ast {
+            println!("{}", stmt);
         }
-        Err(err) => match err {
-            CompilerError::ParserError(parser_error) => {
-                println!("{:?}", parser_error);
-            }
-            CompilerError::LexerError(lexer_error) => {
-                println!("{:?}", lexer_error);
-            }
-            CompilerError::FileNotFound(error) => {
-                println!("{:?}", error);
-            }
-        },
+    }
+    if !result.errors.is_empty() {
+        for error in result.errors {
+            println!("Compiler error: {:?}", error)
+        }
     }
 }
