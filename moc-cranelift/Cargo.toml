@@ -5,5 +5,5 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-cranelift-codegen = { version = "0.113.1", features = ["all-native-arch", "x86"] }
-cranelift-frontend = "0.113.1"
+cranelift-codegen = { version = "0.125.3", features = ["all-native-arch", "x86"] }
+cranelift-frontend = "0.125.3"
