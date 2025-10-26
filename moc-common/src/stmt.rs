@@ -7,7 +7,7 @@ use crate::{debug_utils::create_indent, expr::Expr, BinaryOp, CodeBlock};
 #[derive(Clone, Debug, Serialize)]
 pub enum Stmt {
     Print(Expr), // probably dont wanna have this as inbuilt function
-    // a int32 (declaring variable)
+    // a i32 (declaring variable)
     LocalVarDecl {
         ident: String,
         type_ident: String
@@ -23,7 +23,7 @@ pub enum Stmt {
         operator: BinaryOp,
         value: Expr,
     },
-    // a int32 := 10 OR a := 10 (infers type)
+    // a i32 := 10 OR a := 10 (infers type)
     LocalVarDeclAssign {
         ident: String,
         type_ident: Option<String>,
