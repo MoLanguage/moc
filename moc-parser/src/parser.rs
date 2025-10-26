@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, vec::IntoIter};
+use std::{collections::VecDeque, path::PathBuf, vec::IntoIter};
 
 use itertools::{PeekNth, peek_nth};
 use log::debug;
@@ -28,8 +28,6 @@ impl Parser {
         parser
     }
 
-    // Int32 a
-    //   ^
     /// Gets and clones current token.
     /// # Panics
     /// If current token is None
@@ -104,7 +102,7 @@ impl Parser {
 
     #[allow(dead_code)]
     fn peek_nth(&mut self, n: usize) -> Option<&Token> {
-        self.token_stream.peek_nth(n) // TODO: maybe check if this causes problems at the end of files...
+        self.token_stream.peek_nth(n) // Note: maybe check if this causes problems at the end of files...
     }
 
     pub fn parse(mut self) -> ParseResult {
@@ -147,7 +145,7 @@ impl Parser {
         Ok(())
     }
 
-    fn parse_module_identifier(&mut self) -> Result<ModIdent, ParserError> {
+    fn parse_module_path(&mut self) -> Result<ModIdent, ParserError> {
         let mut module_dirs = VecDeque::new();
         if self.matches(TokenType::Ident) {
             loop {
@@ -172,11 +170,17 @@ impl Parser {
         }
         Ok(ModIdent::new(module_dirs))
     }
+    
+    // Parsing:
+    // use <module_path_element>(:<module_path_element>)* ("<alias>")?
+    // 
+    // # Examples:
     // use io | use io "foo"
-    // use io:print | s
+    // use io:print | use io:print "printie"
     fn parse_use_decl(&mut self) -> Result<Decl, ParserError> {
+        // Just peeked Use token
         self.advance();
-        let identifier = self.parse_module_identifier()?;
+        let identifier = self.parse_module_path()?;
         let decl;
         if self.matches(TokenType::StringLiteral) {
             decl = Decl::Use {
@@ -194,13 +198,14 @@ impl Parser {
     }
 
     fn parse_fn_decl(&mut self) -> Result<Decl, ParserError> {
+        // Just peeked Fn token
         self.advance();
 
         self.try_consume_token(TokenType::Ident, "Expected function identifier")?;
         let fn_ident = self.unwrap_current_token().unwrap_value();
         self.try_consume_token(TokenType::OpenParen, "Expected open parenthesis")?;
 
-        // parse parameters
+        // Parse parameters
         let mut params = Vec::new();
         if !self.matches(TokenType::CloseParen) {
             loop {
@@ -224,12 +229,12 @@ impl Parser {
                 .wrap();
             }
         }
-        // parse return type
+        // Parse return type
         let mut return_type = None;
         if self.matches(TokenType::Ident) {
             return_type = Some(self.unwrap_current_token().unwrap_value());
         }
-        // parse body / code
+        // Parse body / code
         self.skip(TokenType::LineBreak);
         let body = self.parse_code_block()?;
         let fn_decl = Decl::Fn {
@@ -242,9 +247,6 @@ impl Parser {
         Ok(fn_decl)
     }
 
-    // TODO:
-    // if is statement (switch or match)
-    // for in
     fn parse_code_block(&mut self) -> Result<CodeBlock, ParserError> {
         debug!("parsing code block");
         self.try_consume_token(TokenType::OpenBrace, "Expected open brace")?;
@@ -313,7 +315,7 @@ impl Parser {
         mut ident: String,
     ) -> Result<(String, Option<ModIdent>), ParserError> {
         // has module identifier
-        let mut module_ident0 = self.parse_module_identifier()?;
+        let mut module_ident0 = self.parse_module_path()?;
         module_ident0.path.push_front(ident); // already parsed Ident token becomes first piece of the module identifier
         ident = module_ident0.remove_and_get_last_path(); // last path becomes function/variable identifier
         Ok((ident, Some(module_ident0)))
@@ -402,9 +404,11 @@ impl Parser {
         Ok(fn_call)
     }
 
-    /*
-    for <bool expr> <code block>
-     */
+    // TODO:
+    // for-in loop for collections, for loop without condition (like loop keyword in Rust) 
+    // 
+    // Parsing:
+    // for <bool expr> <code block>
     fn parse_for_loop(&mut self) -> Result<Stmt, ParserError> {
         self.advance();
         let condition = self.parse_expression()?;
@@ -416,6 +420,10 @@ impl Parser {
         Ok(stmt)
     }
 
+    // TODO:
+    // if is statement (like switch or match)
+    // 
+    // Parsing:
     // if <bool expr> <code block>
     fn parse_if_else_stmt(&mut self) -> Result<Stmt, ParserError> {
         self.advance();
@@ -458,7 +466,7 @@ impl Parser {
         loop {
             self.skip(TokenType::LineBreak);
             if self.matches(TokenType::CloseBrace) {
-                break; // empty struct case
+                break; // Struct without fields
             }
             self.try_consume_token(TokenType::Ident, "Expected variable identifier")?;
             let var_ident = self.unwrap_current_token().unwrap_value();
@@ -469,18 +477,17 @@ impl Parser {
                 .peek()
                 .is_some_and(|t| t.is_of_type(TokenType::CloseBrace))
             {
-                // if next isnt closebrace, means we are expecting next struct field declaration
+                // If next isn't token CloseBrace, means we are expecting next struct field declaration
                 self.try_consume_token2(
                     &[TokenType::LineBreak, TokenType::Comma],
                     "Expected comma ',' or linebreak",
                 )?;
             }
         }
-        decl = Decl::Struct {
+        Ok(Decl::Struct {
             ident: struct_ident,
             fields,
-        };
-        Ok(decl)
+        })
     }
 
     // :Expressions
@@ -491,6 +498,7 @@ impl Parser {
     }
 
     // a != b   a == b
+    // <expr> (( != | == ) <expr>)*
     fn parse_equality_expr(&mut self) -> ExprParseResult {
         debug!("parsing equality expr {}", self.parser_state_dbg_info());
 
@@ -504,6 +512,11 @@ impl Parser {
         Ok(expr)
     }
 
+    
+    // Parsing:
+    // <expr> (( > | >= | < | <= ) <expr>)*
+    //
+    // # Examples:
     // a > b   a >= b   a < b   a <= b
     fn parse_comparison_expr(&mut self) -> ExprParseResult {
         debug!("parsing comparison expr {}", self.parser_state_dbg_info());
@@ -526,6 +539,10 @@ impl Parser {
         Ok(expr)
     }
 
+    // Parsing:
+    // <expr> (( - | + ) <expr>)*
+    // 
+    // # Examples:
     // a - b   a + b
     fn parse_term_expr(&mut self) -> ExprParseResult {
         debug!(
@@ -544,6 +561,10 @@ impl Parser {
         Ok(expr)
     }
 
+    // Parsing: 
+    // <expr> (( / | * | % | & | ~ | << | >> | ^ | '|' ) <expr>)*
+    // 
+    // # Examples:
     // a / b   a * b   a % b   a & b   a ~ b   a << b   a >> b   a ^ b   a | b
     fn parse_factor_and_bitwise_expr(&mut self) -> ExprParseResult {
         debug!(
@@ -573,6 +594,10 @@ impl Parser {
         Ok(expr)
     }
 
+    // Parsing:
+    // (! | -)?<expr>
+    //
+    // # Examples:
     // !a   -a
     fn parse_unary_expr(&mut self) -> ExprParseResult {
         debug!("parsing unary expr {}", self.parser_state_dbg_info());
@@ -588,39 +613,11 @@ impl Parser {
         self.parse_dot_expr()
     }
 
-    /*
-    * fn parse_dot_expr(&mut self) -> ExprParseResult {
-        let mut chain = VecDeque::new();
-        //<expr>(.<fn_call>|<field>)*
-        let mut first = true;
-        loop {
-            let prefix_expr = self.parse_expression()?;
-            if self.matches(TokenType::Dot) {
-                self.advance();
-                let expr = self.parse_fn_call_field_access(prefix_expr)?;
-                match expr {
-                    None => {
-                        return Err(ParserError::new(
-                            "Expected function call or field access",
-                            self.current_token(),
-                        ));
-                    }
-                    Some(expr) => {
-                        chain.push_back(expr);
-                    }
-                }
-            } else {
-                if first {
-                    return self.parse_primary_expr();
-                } else {
-                    return Ok(Expr::DotExprChain(chain));
-                }
-            }
-            first = false;
-        }
-    }
-    */
-
+    // Parsing:
+    // <expr>(.<fn_call>|<field>)*
+    // 
+    // Examples:
+    // a.b().c() | a.b.c() | a.b.c(args) etc. 
     fn parse_dot_expr(&mut self) -> ExprParseResult {
         // start from the base (primary expression)
         let mut expr = self.parse_primary_expr()?;
@@ -666,7 +663,8 @@ impl Parser {
         Ok(None)
     }
 
-    // literals, variables and function calls
+    // Parsing: 
+    // Literals, variables and function calls
     fn parse_primary_expr(&mut self) -> ExprParseResult {
         debug!("parsing primary expr {}", self.parser_state_dbg_info());
 
@@ -792,6 +790,7 @@ impl Parser {
         Err(ParserError::new(msg, self.peek().cloned()))
     }
 
+    /// Prints some debug info about the current state of the parser
     fn parser_state_dbg_info(&mut self) -> String {
         let current = self.unwrap_current_token();
         let line = current.span.start.line;
