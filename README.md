@@ -1,5 +1,5 @@
 # moc
-This is the repository of what's meant to become the Mo compiler. At the moment, sadly it's just a glorified parser, but that will change soon :)
+This is the repository of what's meant to become the Mo compiler. At the moment, sadly it's still just a glorified parser, but that will change soon :)
 
 # Build
 To try out the compiler/parser
