@@ -4,4 +4,4 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-llvm-sys = "211.0.0"
+llvm-sys = { version = "201.0.0", features=["prefer-dynamic"]}
