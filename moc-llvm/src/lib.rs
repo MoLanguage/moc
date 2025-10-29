@@ -5,7 +5,6 @@ use llvm_sys::target_machine::{LLVMCodeGenFileType, LLVMCodeGenOptLevel, LLVMCod
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::ptr;
-use std::str::FromStr;
 
 pub fn compile_with_llvm() {
     unsafe {
@@ -40,7 +39,7 @@ pub fn compile_with_llvm() {
 
         // Make global string constant
         let hello_str = CString::new("Hello, world!").unwrap();
-        let global_str = LLVMBuildGlobalStringPtr(builder, hello_str.as_ptr(), CString::new("str").unwrap().as_ptr());
+        let global_str = LLVMBuildGlobalString(builder, hello_str.as_ptr(), CString::new("str").unwrap().as_ptr());
 
         // Call puts("Hello, world!")
         let puts_fn = LLVMGetNamedFunction(module, puts_name.as_ptr());
