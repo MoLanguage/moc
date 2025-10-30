@@ -62,7 +62,7 @@ impl<'a> Lexer<'a> {
         self.location.column = 1;
         self.location.line += 1;
     }
-    
+
     fn update_span(&mut self) {
         self.last_token_end = self.location;
     }
@@ -136,7 +136,7 @@ impl<'a> Lexer<'a> {
                         if self.peek_char() == Some('/') {
                             // two slashes means a comment
                             if let Some(token) = self.skip_comment() {
-                                return token
+                                return token;
                             } else {
                                 continue;
                             }
@@ -191,7 +191,7 @@ impl<'a> Lexer<'a> {
                         break self.lex_operator(ch);
                     }
                     '0'..='9' => break self.lex_number(),
-                    'a'..='z' | 'A'..='Z' | '_' => break Ok(self.lex_ident()),
+                    'a'..='z' | 'A'..='Z' | '_' => break Ok(self.lex_keyword_or_ident()),
                     '\"' => break self.lex_string_literal(),
                     _ => {
                         break Err(LexerError::InvalidCharacter(ch));
@@ -328,21 +328,26 @@ impl<'a> Lexer<'a> {
                     ));
                 }
                 'o' => {
-                    return Some(self
-                        .lex_non_decimal_literal_value(num, NumberLiteralType::OctalInteger));
+                    return Some(
+                        self.lex_non_decimal_literal_value(num, NumberLiteralType::OctalInteger),
+                    );
                 }
                 'b' => {
-                    return Some(self
-                        .lex_non_decimal_literal_value(num, NumberLiteralType::BinaryInteger));
+                    return Some(
+                        self.lex_non_decimal_literal_value(num, NumberLiteralType::BinaryInteger),
+                    );
                 }
-                '.' => { return None }
+                '.' => return None,
                 _ => {
                     if let Some(ch) = self.peek_nth_char(2) {
                         if ch.is_digit(16) {
-                            return Some(Err(LexerError::UnexpectedCharacterLexingNonDecimalNumberLiteral(self.last_token_end)));
+                            return Some(Err(
+                                LexerError::UnexpectedCharacterLexingNonDecimalNumberLiteral(
+                                    self.last_token_end,
+                                ),
+                            ));
                         }
                     }
-
                 }
             }
         }
@@ -372,11 +377,15 @@ impl<'a> Lexer<'a> {
         ));
     }
 
-    fn lex_ident(&mut self) -> Token {
+    fn lex_keyword_or_ident(&mut self) -> Token {
         let mut ident = String::new();
 
+        let mut contains_colon = false;
         while let Some(ch) = self.peek_char() {
-            if ch.is_alphanumeric() || ch == '_' {
+            if !contains_colon {
+                contains_colon = ch == ':';
+            }
+            if ch.is_alphanumeric() || ch == '_' || contains_colon {
                 ident.push(ch);
                 self.advance();
             } else {
@@ -399,7 +408,13 @@ impl<'a> Lexer<'a> {
             "sum" => token!(self, Sum),
             "true" => token!(self, True),
             "use" => token!(self, Use),
-            _ => Token::new_ident(ident, (self.last_token_end, self.location).into()),
+            _ => {
+                if contains_colon {
+                    Token::mod_ident(ident, (self.last_token_end, self.location).into())
+                } else {
+                    Token::ident(ident, (self.last_token_end, self.location).into())
+                }
+            }
         }
     }
 

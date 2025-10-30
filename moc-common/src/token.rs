@@ -73,6 +73,7 @@ pub enum TokenType {
     Percent,
     Pipe,
     ModAssign,
+    ModIdent,
     MultAssign,
     NotEqualTo,
     DecimalIntegerNumberLiteral,
@@ -135,9 +136,16 @@ impl Token {
             span,
         }
     }
-    pub fn new_ident(ident: String, span: CodeSpan) -> Self {
+    pub fn ident(ident: String, span: CodeSpan) -> Self {
         Self {
             r#type: TokenType::Ident,
+            value: Some(ident.into()),
+            span,
+        }
+    }
+    pub fn mod_ident(ident: String, span: CodeSpan) -> Self {
+        Self {
+            r#type: TokenType::ModIdent,
             value: Some(ident.into()),
             span,
         }
