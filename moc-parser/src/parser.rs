@@ -1,6 +1,6 @@
-use std::{collections::VecDeque, vec::IntoIter};
+use std::vec::IntoIter;
 
-use itertools::{MultiPeek, PeekNth, multipeek, peek_nth};
+use itertools::{PeekNth, peek_nth};
 use log::debug;
 use moc_common::{
     CodeBlock, ModulePath, TypedVar,
@@ -66,31 +66,6 @@ impl Parser {
             }
         }
         Ok(())
-    }
-
-    fn parse_module_path(&mut self) -> Result<ModulePath, ParserError> {
-        let mut module_dirs = VecDeque::new();
-        if self.matches(TokenType::Ident) {
-            loop {
-                module_dirs.push_back(self.unwrap_current_token().unwrap_value());
-                if self.matches(TokenType::Colon) {
-                    if self.matches(TokenType::Ident) {
-                        continue;
-                    } else {
-                        return ParserError::new(
-                            "Expected module directory",
-                            self.current_token.clone(),
-                        )
-                        .wrap();
-                    }
-                } else {
-                    break;
-                }
-            }
-        } else {
-            return ParserError::new("Expected module identifier", self.peek().cloned()).wrap();
-        }
-        Ok(ModulePath::new(module_dirs))
     }
 
     // Parsing:
@@ -280,6 +255,7 @@ impl Parser {
         Ok(None)
     }
 
+    #[allow(dead_code)]
     fn consume_line_terminator(&mut self) -> Result<(), ParserError> {
         self.try_consume_token2(
             &[TokenType::LineBreak, TokenType::Semicolon],
