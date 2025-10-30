@@ -1,9 +1,9 @@
 use std::{collections::VecDeque, vec::IntoIter};
 
-use itertools::{PeekNth, peek_nth};
+use itertools::{MultiPeek, PeekNth, multipeek, peek_nth};
 use log::debug;
 use moc_common::{
-    CodeBlock, ModIdent, TypedVar,
+    CodeBlock, ModulePath, TypedVar,
     ast::Ast,
     decl::Decl,
     error::{ExprParseResult, ParseResult, ParserError},
@@ -26,83 +26,6 @@ impl Parser {
             ast: Ast::new(),
         };
         parser
-    }
-
-    /// Gets and clones current token.
-    /// # Panics
-    /// If current token is None
-    fn unwrap_current_token(&self) -> Token {
-        self.current_token.clone().unwrap()
-    }
-
-    fn current_token(&self) -> Option<Token> {
-        self.current_token.clone()
-    }
-
-    #[track_caller]
-    fn advance(&mut self) {
-        self.current_token = self.token_stream.next();
-
-        // Debug info:
-        if let Some(current_token) = self.current_token() {
-            if let Some(peeked_token) = self.token_stream.peek().cloned() {
-                debug!(
-                    "{} advanced from {}, peeking {}",
-                    std::panic::Location::caller(),
-                    current_token,
-                    peeked_token
-                );
-            }
-        }
-    }
-
-    /// Advances n times.
-    #[allow(dead_code)]
-    fn advance_n(&mut self, n: usize) {
-        for _ in 0..n {
-            self.advance();
-        }
-    }
-
-    /// Skips tokens that are of the same type as given.
-    fn skip(&mut self, token_type: TokenType) {
-        loop {
-            if let Some(token) = self.peek() {
-                if token.is_of_type(token_type) {
-                    let token = token.clone();
-                    self.advance();
-                    debug!("Skipped token: {}", token);
-                } else {
-                    break;
-                }
-            } else {
-                break;
-            }  
-        }
-    }
-
-    /// Skips tokens that are of any of the types given.
-    #[allow(dead_code)]
-    fn skip_any(&mut self, token_types: &[TokenType]) {
-        loop {
-            if let Some(token) = self.peek() {
-                if token.is_of_types(token_types) {
-                    debug!("Peeking token: {}, skipping", token);
-                    self.advance();
-                } else {
-                    break;
-                }
-            }
-        }
-    }
-
-    fn peek(&mut self) -> Option<&Token> {
-        self.token_stream.peek()
-    }
-
-    #[allow(dead_code)]
-    fn peek_nth(&mut self, n: usize) -> Option<&Token> {
-        self.token_stream.peek_nth(n) // Note: maybe check if this causes problems at the end of files...
     }
 
     pub fn parse(mut self) -> ParseResult {
@@ -145,7 +68,7 @@ impl Parser {
         Ok(())
     }
 
-    fn parse_module_path(&mut self) -> Result<ModIdent, ParserError> {
+    fn parse_module_path(&mut self) -> Result<ModulePath, ParserError> {
         let mut module_dirs = VecDeque::new();
         if self.matches(TokenType::Ident) {
             loop {
@@ -165,31 +88,32 @@ impl Parser {
                 }
             }
         } else {
-            return ParserError::new("Expected module identifier", self.peek().cloned())
-                .wrap();
+            return ParserError::new("Expected module identifier", self.peek().cloned()).wrap();
         }
-        Ok(ModIdent::new(module_dirs))
+        Ok(ModulePath::new(module_dirs))
     }
-    
+
     // Parsing:
     // use <module_path_element>(:<module_path_element>)* ("<alias>")?
-    // 
+    //
     // # Examples:
     // use io | use io "foo"
     // use io:print | use io:print "printie"
     fn parse_use_decl(&mut self) -> Result<Decl, ParserError> {
         // Just peeked Use token
         self.advance();
-        let identifier = self.parse_module_path()?;
+        self.try_consume_token(TokenType::ModIdent, "Expected module identifier")?;
+        let identifier = self.unwrap_current_token().unwrap_value();
+        let module_ident = ModulePath::from_string(&identifier);
         let decl;
         if self.matches(TokenType::StringLiteral) {
             decl = Decl::Use {
-                module_ident: identifier,
+                module_ident,
                 module_alias: Some(self.unwrap_current_token().unwrap_value()),
             };
         } else {
             decl = Decl::Use {
-                module_ident: identifier,
+                module_ident,
                 module_alias: None,
             };
         }
@@ -256,52 +180,67 @@ impl Parser {
         let mut code_block = CodeBlock::new();
         loop {
             if self.matches(TokenType::CloseBrace) {
-               self.skip(TokenType::LineBreak);
-               debug!("matched closebrace, returning codeblock");
-               return Ok(code_block)
+                self.skip(TokenType::LineBreak);
+                debug!("matched closebrace, returning codeblock");
+                return Ok(code_block);
             }
             let stmt = self.parse_stmt()?;
             code_block.stmts.push(stmt);
-            self.skip(TokenType::LineBreak);  
+            self.skip(TokenType::LineBreak);
         }
     }
 
+    // TODO: Rework
+    //
+    // Stmts with identifier in the beginning:
+    //
+    // Variable declaration assignment
+    // foo type := expr
+    //
+    //
+    // struct_field_assignment:
+    // dot().expr().field = expr
+    //
+    // fn call stmt:
+    // calling()
+    //
     fn parse_stmt(&mut self) -> Result<Stmt, ParserError> {
         if let Some(token) = self.peek().cloned() {
             match token.r#type {
-                TokenType::Ident => {
-                    // ambiguity: function call vs variable declaration
-                    self.advance(); // advancing to be able to check if next token is a open parenthesis
-                    let mut ident = token.unwrap_value(); // save the identifier value
-                    let mut mod_ident = None;
-                    // parse module spec prefix
-                    if self.matches(TokenType::Colon) {
-                        (ident, mod_ident) = self.parse_module_prefix(ident)?;
+                TokenType::For => return self.parse_for_loop(),
+                TokenType::If => return self.parse_if_else_stmt(),
+                TokenType::Ret => return self.parse_ret_stmt(),
+                TokenType::Ident | TokenType::ModIdent => {
+                    // Parse variable declarations
+                    if let Some(var_decl) = self.parse_var_decl()? {
+                        return Ok(var_decl);
                     }
-                    if self.matches(TokenType::OpenParen) {
-                        let fn_call = self.parse_fn_call(ident, mod_ident)?;
-                        return Ok(Stmt::Expr(Expr::FnCall(fn_call)));
-                    } else if self.peek().is_some_and(|token| token.is_binary_op()) {
+
+                    // Parse assignments
+                    let dot_expr = self.parse_dot_expr()?;
+                    if self.matches(TokenType::Equals) {
+                        let new_value = self.parse_expression()?;
+                        //self.consume_line_terminator()?; // we'll see if we need this.. keeping this commented out for now.
+                        return Ok(Stmt::Assignmt {
+                            assignee: dot_expr,
+                            new_value,
+                        });
+                    }
+                    if self.peek().is_some_and(|token| token.is_binary_op()) {
+                        // handling operator assign statements
                         // e.g. a += 10
                         self.advance();
                         let operator = self.unwrap_current_token().r#type.try_into().unwrap();
                         let value = self.parse_expression()?;
                         return Ok(Stmt::VarOperatorAssign {
-                            ident,
+                            assignee: dot_expr,
                             operator,
                             value,
                         });
-                    } else {
-                        let stmt = self.parse_var_decl_assignmt()?;
-                        return Ok(stmt);
                     }
+                    return Ok(Stmt::Expr(dot_expr));
                 }
-                TokenType::For => return self.parse_for_loop(),
-                TokenType::If => return self.parse_if_else_stmt(),
-                TokenType::Ret => return self.parse_ret_stmt(),
-                _ => {
-                    return Ok(Stmt::Expr(self.parse_expression()?));
-                }
+                _ => {}
             }
         }
         Err(ParserError::new(
@@ -309,58 +248,36 @@ impl Parser {
             self.current_token(),
         ))
     }
-    /// Weird hacky function to get the module identifier from e.g. a function call with a prefix like this: std:io:print()
-    fn parse_module_prefix(
-        &mut self,
-        mut ident: String,
-    ) -> Result<(String, Option<ModIdent>), ParserError> {
-        // has module identifier
-        let mut module_ident0 = self.parse_module_path()?;
-        module_ident0.path.push_front(ident); // already parsed Ident token becomes first piece of the module identifier
-        ident = module_ident0.remove_and_get_last_path(); // last path becomes function/variable identifier
-        Ok((ident, Some(module_ident0)))
-    }
+
     /*
     Parses statements of this form:
-    a i32 := 10 | DeclAssignmt
+    a i32 := 10   | DeclAssignmt
     a := 10       | DeclAssignmt (no type identifier. type to be inferred)
-    a i32       | Decl
-    a = 10        | Assignmt
+    a i32         | Decl
      */
-    fn parse_var_decl_assignmt(&mut self) -> Result<Stmt, ParserError> {
-        assert_eq!(self.unwrap_current_token().r#type, TokenType::Ident);
-        let ident = self.unwrap_current_token().unwrap_value();
-        if self.matches(TokenType::Ident) {
-            let type_ident = self.unwrap_current_token().unwrap_value();
-            if self.matches(TokenType::DeclareAssign) {
-                let expr = self.parse_expression()?;
-                self.consume_line_terminator()?;
-                return Ok(Stmt::LocalVarDeclAssign {
-                    type_ident: Some(type_ident),
-                    ident,
-                    value: expr,
-                });
-            } else if self.matches_any(&[TokenType::LineBreak, TokenType::Semicolon]) {
-                return Ok(Stmt::LocalVarDecl { ident, type_ident });
-            }
-        } else if self.matches(TokenType::Assign) {
-            let expr = self.parse_expression()?;
-            self.consume_line_terminator()?;
-            return Ok(Stmt::LocalVarAssign { ident, value: expr });
-        } else if self.matches(TokenType::DeclareAssign) {
-            let expr = self.parse_expression()?;
-            self.consume_line_terminator()?;
-            return Ok(Stmt::LocalVarDeclAssign {
-                type_ident: None,
-                ident,
-                value: expr,
-            });
+    fn parse_var_decl(&mut self) -> Result<Option<Stmt>, ParserError> {
+        if self.matches_in_row(&[TokenType::Ident, TokenType::DeclareAssign]) {
+            // type inferred declaration
+            self.advance();
+            let ident = self.unwrap_current_token().unwrap_value();
+            self.advance();
+            let value = self.parse_expression()?;
+            return Ok(Some(Stmt::LocalVarDeclAssign { ident, type_ident: None, value }))
         }
-        ParserError::new(
-            "Unexpected token parsing variable declaration/assigning",
-            self.peek().cloned(),
-        )
-        .wrap()
+        if self.matches_in_row(&[TokenType::Ident, TokenType::Ident, TokenType::DeclareAssign]) {
+            // declaration with type
+            self.advance();
+            let ident = self.unwrap_current_token().unwrap_value();
+
+            self.advance();
+            let type_ident = self.unwrap_current_token().unwrap_value();
+
+            self.advance(); // skip over DeclareAssign
+
+            let value = self.parse_expression()?;
+            return Ok(Some(Stmt::LocalVarDeclAssign { ident, type_ident: Some(type_ident), value }))
+        }
+        Ok(None)
     }
 
     fn consume_line_terminator(&mut self) -> Result<(), ParserError> {
@@ -373,8 +290,8 @@ impl Parser {
     // when this is called, the current token is the function identifier
     fn parse_fn_call(
         &mut self,
+        mod_ident: Option<ModulePath>,
         fn_ident: String,
-        mod_ident: Option<ModIdent>,
     ) -> Result<FnCall, ParserError> {
         // parse arguments
         let mut args = Vec::new();
@@ -405,8 +322,8 @@ impl Parser {
     }
 
     // TODO:
-    // for-in loop for collections, for loop without condition (like loop keyword in Rust) 
-    // 
+    // for-in loop for collections, for loop without condition (like loop keyword in Rust)
+    //
     // Parsing:
     // for <bool expr> <code block>
     fn parse_for_loop(&mut self) -> Result<Stmt, ParserError> {
@@ -422,7 +339,7 @@ impl Parser {
 
     // TODO:
     // if is statement (like switch or match)
-    // 
+    //
     // Parsing:
     // if <bool expr> <code block>
     fn parse_if_else_stmt(&mut self) -> Result<Stmt, ParserError> {
@@ -502,7 +419,7 @@ impl Parser {
         debug!("parsing equality expr {}", self.parser_state_dbg_info());
 
         let mut expr = self.parse_comparison_expr()?;
-        while self.matches_any(&[TokenType::NotEqualTo, TokenType::EqualTo]) {
+        while self.matches_any(&[TokenType::ExclEquals, TokenType::DoubleEquals]) {
             let operator = self.unwrap_current_token();
             println!("equality expr: chosen operator {}", operator.r#type);
             let right = self.parse_comparison_expr()?;
@@ -511,7 +428,6 @@ impl Parser {
         Ok(expr)
     }
 
-    
     // Parsing:
     // <expr> (( > | >= | < | <= ) <expr>)*
     //
@@ -540,7 +456,7 @@ impl Parser {
 
     // Parsing:
     // <expr> (( - | + ) <expr>)*
-    // 
+    //
     // # Examples:
     // a - b   a + b
     fn parse_term_expr(&mut self) -> ExprParseResult {
@@ -560,9 +476,9 @@ impl Parser {
         Ok(expr)
     }
 
-    // Parsing: 
+    // Parsing:
     // <expr> (( / | * | % | & | ~ | << | >> | ^ | '|' ) <expr>)*
-    // 
+    //
     // # Examples:
     // a / b   a * b   a % b   a & b   a ~ b   a << b   a >> b   a ^ b   a | b
     fn parse_factor_and_bitwise_expr(&mut self) -> ExprParseResult {
@@ -612,11 +528,27 @@ impl Parser {
         self.parse_dot_expr()
     }
 
+    #[inline]
+    fn mod_path_split_from_ident_token(&self) -> (Option<ModulePath>, String) {
+        let token = self.unwrap_current_token();
+        let ident = token.unwrap_value();
+        return match token.r#type {
+            TokenType::Ident => (None, ident),
+            TokenType::ModIdent => {
+                let mut module_path_prefix = ModulePath::from_string(&ident);
+                let ident = module_path_prefix.remove_and_get_last_path();
+
+                (Some(module_path_prefix), ident)
+            }
+            _ => panic!("Given token needs to be of type ModIdent or Ident"),
+        };
+    }
+
     // Parsing:
     // <expr>(.<fn_call>|<field>)*
-    // 
+    //
     // Examples:
-    // a.b().c() | a.b.c() | a.b.c(args) etc. 
+    // a.b().c() | a.b.c() | a.b.c(args) etc.
     fn parse_dot_expr(&mut self) -> ExprParseResult {
         // start from the base (primary expression)
         let mut expr = self.parse_primary_expr()?;
@@ -624,11 +556,10 @@ impl Parser {
         // then, while there's a '.', chain
         while self.matches(TokenType::Dot) {
             // we're already past the '.'
-            self.try_consume_token(TokenType::Ident, "Expected identifier after '.'")?;
-            let ident = self.unwrap_current_token().unwrap_value();
-
+            self.try_consume_token2(&[TokenType::Ident, TokenType::ModIdent], "Expected identifier after '.'")?;
+            let (module_path_prefix, ident) = self.mod_path_split_from_ident_token();
             if self.matches(TokenType::OpenParen) {
-                let fn_call = self.parse_fn_call(ident, None)?;
+                let fn_call = self.parse_fn_call(module_path_prefix, ident)?;
                 expr = Expr::DotExpr(DotExpr::FnCall {
                     called_on: Box::new(expr),
                     fn_call,
@@ -644,32 +575,11 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_fn_call_var_expr(&mut self) -> Result<Option<Expr>, ParserError> {
-        if self.matches(TokenType::Ident) {
-            let mut ident = self.unwrap_current_token().unwrap_value();
-            let mut mod_ident = None;
-            if self.matches(TokenType::Colon) {
-                (ident, mod_ident) = self.parse_module_prefix(ident)?;
-            }
-
-            if self.matches(TokenType::OpenParen) {
-                let fn_call = self.parse_fn_call(ident, mod_ident)?;
-                return Ok(Some(Expr::FnCall(fn_call)));
-            }
-            debug!("Ok, returning variable ident expr");
-            return Ok(Some(Expr::Variable { ident, mod_ident }));
-        }
-        Ok(None)
-    }
-
-    // Parsing: 
+    // Parsing:
     // Literals, variables and function calls
     fn parse_primary_expr(&mut self) -> ExprParseResult {
         debug!("parsing primary expr {}", self.parser_state_dbg_info());
 
-        if let Some(fn_call_var_expr) = self.parse_fn_call_var_expr()? {
-            return Ok(fn_call_var_expr);
-        }
         if self.matches(TokenType::True) {
             debug!("Ok, returning boolean literal expr");
             return Ok(Expr::BoolLiteral(true));
@@ -699,11 +609,97 @@ impl Parser {
             debug!("Ok, returning grouping expr");
             return Ok(Expr::Grouping(Box::new(expr)));
         }
+        if self.matches_any(&[TokenType::Ident, TokenType::ModIdent]) {
+            let (prefix, ident) = self.mod_path_split_from_ident_token();
+            if self.matches(TokenType::OpenParen) {
+                let fn_call = self.parse_fn_call(prefix, ident)?;
+                return Ok(Expr::FnCall(fn_call));
+            }
+            return Ok(Expr::Variable { module_path_prefix: prefix, ident });
+        }
         //return Ok(Expr::Empty);
         ParserError::new("Expected an expression", self.peek().cloned()).wrap()
     }
 
     // :Utils
+
+    /// Gets and clones current token.
+    /// # Panics
+    /// If current token is None
+    fn unwrap_current_token(&self) -> Token {
+        self.current_token.clone().unwrap()
+    }
+
+    fn current_token(&self) -> Option<Token> {
+        self.current_token.clone()
+    }
+
+    #[track_caller]
+    fn advance(&mut self) {
+        self.current_token = self.token_stream.next();
+
+        // Debug info:
+        if let Some(current_token) = self.current_token() {
+            if let Some(peeked_token) = self.token_stream.peek().cloned() {
+                debug!(
+                    "{} advanced from {}, peeking {}",
+                    std::panic::Location::caller(),
+                    current_token,
+                    peeked_token
+                );
+            }
+        }
+    }
+
+    /// Advances n times.
+    #[allow(dead_code)]
+    fn advance_n(&mut self, n: usize) {
+        for _ in 0..n {
+            self.advance();
+        }
+    }
+
+    /// Skips tokens that are of the same type as given.
+    fn skip(&mut self, token_type: TokenType) {
+        loop {
+            if let Some(token) = self.peek() {
+                if token.is_of_type(token_type) {
+                    let token = token.clone();
+                    self.advance();
+                    debug!("Skipped token: {}", token);
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+    }
+
+    /// Skips tokens that are of any of the types given.
+    #[allow(dead_code)]
+    fn skip_any(&mut self, token_types: &[TokenType]) {
+        loop {
+            if let Some(token) = self.peek() {
+                if token.is_of_types(token_types) {
+                    debug!("Peeking token: {}, skipping", token);
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
+    fn peek(&mut self) -> Option<&Token> {
+        self.token_stream.peek()
+    }
+
+    #[allow(dead_code)]
+    fn peek_nth(&mut self, n: usize) -> Option<&Token> {
+        self.token_stream.peek_nth(n) // Note: maybe check if this causes problems at the end of files...
+    }
+
     /// checks if next token is of one of the given types, then moves on to that token
     fn matches_any(&mut self, tokens: &[TokenType]) -> bool {
         if self.is_next_of_types(tokens) {
@@ -715,7 +711,6 @@ impl Parser {
 
     #[track_caller]
     fn matches(&mut self, token: TokenType) -> bool {
-        
         debug!("{}", std::panic::Location::caller());
         if self.is_next_of_type(token) {
             self.advance();

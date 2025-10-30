@@ -119,7 +119,7 @@ impl<'a> Lexer<'a> {
                         self.advance();
                         if self.peek_char() == Some('=') {
                             self.advance();
-                            break ok_token!(self, NotEqualTo);
+                            break ok_token!(self, ExclEquals);
                         }
                         break ok_token!(self, Excl);
                     }
@@ -183,9 +183,9 @@ impl<'a> Lexer<'a> {
                         self.advance();
                         if self.peek_char() == Some('=') {
                             self.advance();
-                            break ok_token!(self, EqualTo);
+                            break ok_token!(self, DoubleEquals);
                         }
-                        break ok_token!(self, Assign);
+                        break ok_token!(self, Equals);
                     }
                     '+' | '-' | '*' | '%' | '&' | '|' | '~' | '^' | '<' | '>' => {
                         break self.lex_operator(ch);
@@ -385,7 +385,7 @@ impl<'a> Lexer<'a> {
             if !contains_colon {
                 contains_colon = ch == ':';
             }
-            if ch.is_alphanumeric() || ch == '_' || contains_colon {
+            if ch.is_alphanumeric() || ch == '_' || ch == ':' {
                 ident.push(ch);
                 self.advance();
             } else {

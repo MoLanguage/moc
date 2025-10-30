@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use serde::Serialize;
 
-use crate::{debug_utils::create_indent, CodeBlock, ModIdent, TypedVar};
+use crate::{debug_utils::create_indent, CodeBlock, ModulePath, TypedVar};
 
 #[derive(Debug, Clone, Serialize)]
 pub enum Decl {
@@ -14,7 +14,7 @@ pub enum Decl {
         body: CodeBlock,
     },
     Use {
-        module_ident: ModIdent,
+        module_ident: ModulePath,
         module_alias: Option<String>,
     },
     Struct {

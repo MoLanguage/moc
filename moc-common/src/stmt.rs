@@ -12,14 +12,14 @@ pub enum Stmt {
         ident: String,
         type_ident: String
     },
-    // a = 10 (updating value)
-    LocalVarAssign {
-        ident: String,
-        value: Expr,
+    // <expr> = <expr> (updating value)
+    Assignmt {
+        assignee: Expr,
+        new_value: Expr
     },
     // a += 10, a -= 10 etc. (operating and assigning)
     VarOperatorAssign {
-        ident: String,
+        assignee: Expr,
         operator: BinaryOp,
         value: Expr,
     },
@@ -90,10 +90,6 @@ impl Stmt {
                 result.push_str("Ret: ");
                 expr.display_inner(depth, result);
             }
-            Stmt::LocalVarAssign { ident, value } => {
-                result.push_str(&format!("VarAssign \"{}\"", ident));
-                value.display_inner(depth, result);
-            }
             Stmt::LocalVarDeclAssign {
                 ident,
                 type_ident,
@@ -119,21 +115,7 @@ impl Stmt {
                     stmt.display_inner(depth, result);
                 }
             }
-            Stmt::VarOperatorAssign {
-                ident,
-                operator,
-                value,
-            } => {
-                result.push_str("VarOperatorAssign: ");
-                result.push_str(&format!("Ident: \"{}\" ", ident));
-                result.push_str(&format!("Operator: \"{}\" ", operator));
-
-                //result.push_str(&create_indent(depth + 1));
-                result.push_str("Value: ");
-
-                value.display_inner(depth, result);
-            }
-            //_ => result.push_str("ERR: Stmt not yet registered in print function"),
+            _ => result.push_str("ERR: Stmt not yet registered in print function"),
         }
     }
 }

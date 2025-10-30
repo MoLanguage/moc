@@ -77,17 +77,17 @@ impl CodeBlock {
 }
 
 #[derive(Clone, Debug, Serialize)]
-pub struct ModIdent {
+pub struct ModulePath {
     pub path: VecDeque<String>,
 }
 
-impl ModIdent {
+impl ModulePath {
     pub fn new(module_path: VecDeque<String>) -> Self {
-        ModIdent { path: module_path }
+        ModulePath { path: module_path }
     }
 
     pub fn from_slice(module_path: &[String]) -> Self {
-        ModIdent {
+        ModulePath {
             path: module_path.iter().cloned().collect(),
         }
     }
@@ -99,23 +99,24 @@ impl ModIdent {
             .map(|path_dir| path_dir.to_string())
             .collect();
         path.remove(path.len() - 1);
-        ModIdent { path }
+        ModulePath { path }
     }
     pub fn from_string(ident: &str) -> Self {
         let path = ident
             .split_terminator(":")
             .map(|path_dir| path_dir.to_string())
             .collect();
-        ModIdent { path }
+        ModulePath { path }
     }
 
     pub fn remove_and_get_last_path(&mut self) -> String {
         // Safety: If we check the length of the array it should always yield an element. Therefore the unchecked unwrap shouldn't fail ;)
-        unsafe { self.path.remove(self.path.len() - 1).unwrap_unchecked() }
+        let suffix  = unsafe { self.path.remove(self.path.len() - 1).unwrap_unchecked() };
+        suffix
     }
 }
 
-impl Display for ModIdent {
+impl Display for ModulePath {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("ModuleIdentifier")?;
         self.path.fmt(f)

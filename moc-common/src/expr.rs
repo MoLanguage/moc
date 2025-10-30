@@ -3,7 +3,7 @@ use std::{collections::VecDeque, fmt::Display};
 use serde::Serialize;
 
 use crate::{
-    debug_utils::create_indent, token::{NumberLiteralType, Token}, ModIdent
+    debug_utils::create_indent, token::{NumberLiteralType, Token}, ModulePath
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -20,7 +20,7 @@ pub enum Expr {
     FnCall(FnCall),
     Grouping(Box<Expr>),
     Variable {
-        mod_ident: Option<ModIdent>, // for e.g. constants imported from other module
+        module_path_prefix: Option<ModulePath>, // for e.g. constants imported from other module
         ident: String,
     },
     NumberLiteral(String, NumberLiteralType),
@@ -32,7 +32,7 @@ pub enum Expr {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FnCall {
-    pub mod_ident: Option<ModIdent>,
+    pub mod_ident: Option<ModulePath>,
     pub ident: String,
     pub args: Vec<Expr>,
 }
@@ -120,7 +120,7 @@ impl Expr {
                 result.push_str(&format!("{}Grouping: ", create_indent(depth)));
                 astnode.display_inner(depth, result);
             }
-            Expr::Variable { ident, mod_ident } => {
+            Expr::Variable { ident, module_path_prefix: mod_ident } => {
                 if let Some(mod_ident) = mod_ident {
                     result.push_str(&format!("Variable: {}:\"{}\"", mod_ident, ident));
                 } else {

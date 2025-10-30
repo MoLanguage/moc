@@ -32,7 +32,7 @@ impl Display for Token {
 pub enum TokenType {
     AddAssign,           // +=
     Ampersand,           // &
-    Assign,              // =
+    Equals,              // =
     At,                  // @
     BitAndAssign,        // &=
     BitOrAssign,         //  |=
@@ -52,8 +52,8 @@ pub enum TokenType {
     Defer,
     DivAssign, // /=
     Dot,
-    EqualTo,
-    Excl,
+    DoubleEquals,
+    Excl, // !
     Else,
     EndOfFile,
     False,
@@ -75,7 +75,7 @@ pub enum TokenType {
     ModAssign,
     ModIdent,
     MultAssign,
-    NotEqualTo,
+    ExclEquals,
     DecimalIntegerNumberLiteral,
     DecimalPointNumberLiteral,
     HexadecimalIntegerNumberLiteral,
