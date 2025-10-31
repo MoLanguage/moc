@@ -20,8 +20,7 @@ pub enum Expr {
     FnCall(FnCall),
     Grouping(Box<Expr>),
     Variable {
-        module_path_prefix: Option<ModulePath>, // for e.g. constants imported from other module
-        ident: String,
+        ident: Ident
     },
     NumberLiteral(String, NumberLiteralType),
 
@@ -32,8 +31,7 @@ pub enum Expr {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FnCall {
-    pub mod_ident: Option<ModulePath>,
-    pub ident: String,
+    pub ident: Ident,
     pub args: Vec<Expr>,
 }
 
@@ -41,6 +39,28 @@ pub struct FnCall {
 pub enum DotExpr {
     FnCall { called_on: Box<Expr>, fn_call: FnCall },
     FieldAccess { called_on: Box<Expr>, field_ident: String },
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub enum Ident {
+    Simple(String),
+    WithModulePrefix(ModulePath, String)
+}
+
+impl Ident {
+    /// Gets the ident if of variant Simple, else gets the suffix.
+    pub fn base(&self) -> &String {
+        match self {
+            Ident::Simple(ident) => &ident,
+            Ident::WithModulePrefix(_, ident) => &ident,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub enum TypeExpr {
+    Ident(Ident),
+    Pointer(Box<TypeExpr>)
 }
 
 impl Expr {

@@ -7,7 +7,7 @@ use moc_common::{
     ast::Ast,
     decl::Decl,
     error::{ExprParseResult, ParseResult, ParserError},
-    expr::{DotExpr, Expr, FnCall},
+    expr::{DotExpr, Expr, FnCall, Ident},
     stmt::Stmt,
     token::{Token, TokenType},
 };
@@ -237,7 +237,11 @@ impl Parser {
             let ident = self.unwrap_current_token().unwrap_value();
             self.advance();
             let value = self.parse_expression()?;
-            return Ok(Some(Stmt::LocalVarDeclAssign { ident, type_ident: None, value }))
+            return Ok(Some(Stmt::LocalVarDeclAssign {
+                ident,
+                type_ident: None,
+                value,
+            }));
         }
         if self.matches_in_row(&[TokenType::Ident, TokenType::Ident, TokenType::DeclareAssign]) {
             // declaration with type
@@ -250,7 +254,11 @@ impl Parser {
             self.advance(); // skip over DeclareAssign
 
             let value = self.parse_expression()?;
-            return Ok(Some(Stmt::LocalVarDeclAssign { ident, type_ident: Some(type_ident), value }))
+            return Ok(Some(Stmt::LocalVarDeclAssign {
+                ident,
+                type_ident: Some(type_ident),
+                value,
+            }));
         }
         Ok(None)
     }
@@ -264,11 +272,7 @@ impl Parser {
     }
 
     // when this is called, the current token is the function identifier
-    fn parse_fn_call(
-        &mut self,
-        mod_ident: Option<ModulePath>,
-        fn_ident: String,
-    ) -> Result<FnCall, ParserError> {
+    fn parse_fn_call(&mut self, ident: Ident) -> Result<FnCall, ParserError> {
         // parse arguments
         let mut args = Vec::new();
 
@@ -289,11 +293,7 @@ impl Parser {
                 .wrap();
             }
         }
-        let fn_call = FnCall {
-            mod_ident, // TODO: Parse module path inside this method
-            ident: fn_ident,
-            args,
-        };
+        let fn_call = FnCall { ident, args };
         Ok(fn_call)
     }
 
@@ -504,17 +504,18 @@ impl Parser {
         self.parse_dot_expr()
     }
 
+    /// Tries to convert the current Ident/ModIdent token into a Ident  
     #[inline]
-    fn mod_path_split_from_ident_token(&self) -> (Option<ModulePath>, String) {
+    fn ident_token_to_ident(&self) -> Ident {
         let token = self.unwrap_current_token();
         let ident = token.unwrap_value();
         return match token.r#type {
-            TokenType::Ident => (None, ident),
+            TokenType::Ident => Ident::Simple(ident),
             TokenType::ModIdent => {
                 let mut module_path_prefix = ModulePath::from_string(&ident);
                 let ident = module_path_prefix.remove_and_get_last_path();
 
-                (Some(module_path_prefix), ident)
+                Ident::WithModulePrefix(module_path_prefix, ident)
             }
             _ => panic!("Given token needs to be of type ModIdent or Ident"),
         };
@@ -532,19 +533,30 @@ impl Parser {
         // then, while there's a '.', chain
         while self.matches(TokenType::Dot) {
             // we're already past the '.'
-            self.try_consume_token2(&[TokenType::Ident, TokenType::ModIdent], "Expected identifier after '.'")?;
-            let (module_path_prefix, ident) = self.mod_path_split_from_ident_token();
+            self.try_consume_token2(
+                &[TokenType::Ident, TokenType::ModIdent],
+                "Expected identifier after '.'",
+            )?;
+            let ident = self.ident_token_to_ident();
             if self.matches(TokenType::OpenParen) {
-                let fn_call = self.parse_fn_call(module_path_prefix, ident)?;
+                let fn_call = self.parse_fn_call(ident)?;
                 expr = Expr::DotExpr(DotExpr::FnCall {
                     called_on: Box::new(expr),
                     fn_call,
                 });
             } else {
-                expr = Expr::DotExpr(DotExpr::FieldAccess {
-                    called_on: Box::new(expr),
-                    field_ident: ident,
-                });
+                if let Ident::Simple(ident) = ident {
+                    expr = Expr::DotExpr(DotExpr::FieldAccess {
+                        called_on: Box::new(expr),
+                        field_ident: ident,
+                    });
+                } else {
+                    return ParserError::new(
+                        "Unexpected module identifier on struct field access",
+                        self.peek().cloned(),
+                    )
+                    .wrap();
+                }
             }
         }
 
@@ -586,12 +598,12 @@ impl Parser {
             return Ok(Expr::Grouping(Box::new(expr)));
         }
         if self.matches_any(&[TokenType::Ident, TokenType::ModIdent]) {
-            let (prefix, ident) = self.mod_path_split_from_ident_token();
+            let ident = self.ident_token_to_ident();
             if self.matches(TokenType::OpenParen) {
-                let fn_call = self.parse_fn_call(prefix, ident)?;
+                let fn_call = self.parse_fn_call(ident)?;
                 return Ok(Expr::FnCall(fn_call));
             }
-            return Ok(Expr::Variable { module_path_prefix: prefix, ident });
+            return Ok(Expr::Variable { ident });
         }
         //return Ok(Expr::Empty);
         ParserError::new("Expected an expression", self.peek().cloned()).wrap()
