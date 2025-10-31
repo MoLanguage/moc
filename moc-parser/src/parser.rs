@@ -7,7 +7,7 @@ use moc_common::{
     ast::Ast,
     decl::Decl,
     error::{ExprParseResult, ParseResult, ParserError},
-    expr::{DotExpr, Expr, FnCall, Ident},
+    expr::{DotExpr, Expr, FnCall, Ident, TypeExpr},
     stmt::Stmt,
     token::{Token, TokenType},
 };
@@ -81,7 +81,7 @@ impl Parser {
         let identifier = self.unwrap_current_token().unwrap_value();
         let module_ident = ModulePath::from_string(&identifier);
         let decl;
-        if self.matches(TokenType::StringLiteral) {
+        if self.matches_advance(TokenType::StringLiteral) {
             decl = Decl::Use {
                 module_ident,
                 module_alias: Some(self.unwrap_current_token().unwrap_value()),
@@ -106,19 +106,18 @@ impl Parser {
 
         // Parse parameters
         let mut params = Vec::new();
-        if !self.matches(TokenType::CloseParen) {
+        if !self.matches_advance(TokenType::CloseParen) {
             loop {
                 self.try_consume_token(TokenType::Ident, "Expected variable identifier")?;
                 let var_ident = self.unwrap_current_token().unwrap_value();
 
-                self.try_consume_token(TokenType::Ident, "Expected type identifier")?;
-                let type_ident = self.unwrap_current_token().unwrap_value();
-                params.push(TypedVar::new(var_ident, type_ident));
+                let type_expr = self.parse_type_expr()?;
+                params.push(TypedVar::new(var_ident, type_expr));
 
-                if self.matches(TokenType::CloseParen) {
+                if self.matches_advance(TokenType::CloseParen) {
                     break;
                 }
-                if self.matches(TokenType::Comma) {
+                if self.matches_advance(TokenType::Comma) {
                     continue;
                 }
                 return ParserError::new(
@@ -130,7 +129,7 @@ impl Parser {
         }
         // Parse return type
         let mut return_type = None;
-        if self.matches(TokenType::Ident) {
+        if self.matches_advance(TokenType::Ident) {
             return_type = Some(self.unwrap_current_token().unwrap_value());
         }
         // Parse body / code
@@ -154,7 +153,7 @@ impl Parser {
 
         let mut code_block = CodeBlock::new();
         loop {
-            if self.matches(TokenType::CloseBrace) {
+            if self.matches_advance(TokenType::CloseBrace) {
                 self.skip(TokenType::LineBreak);
                 debug!("matched closebrace, returning codeblock");
                 return Ok(code_block);
@@ -193,7 +192,7 @@ impl Parser {
 
                     // Parse assignments
                     let dot_expr = self.parse_dot_expr()?;
-                    if self.matches(TokenType::Equals) {
+                    if self.matches_advance(TokenType::Equals) {
                         let new_value = self.parse_expression()?;
                         //self.consume_line_terminator()?; // we'll see if we need this.. keeping this commented out for now.
                         return Ok(Stmt::Assignmt {
@@ -239,28 +238,56 @@ impl Parser {
             let value = self.parse_expression()?;
             return Ok(Some(Stmt::LocalVarDeclAssign {
                 ident,
-                type_ident: None,
+                type_expr: None,
                 value,
             }));
         }
-        if self.matches_in_row(&[TokenType::Ident, TokenType::Ident, TokenType::DeclareAssign]) {
-            // declaration with type
+        
+        // Declaration with explicit type
+        if self.matches_in_row(&[TokenType::Ident, TokenType::Ident, TokenType::DeclareAssign]) 
+            
+        { // doesnt work when trying to parse type expr
             self.advance();
             let ident = self.unwrap_current_token().unwrap_value();
 
-            self.advance();
-            let type_ident = self.unwrap_current_token().unwrap_value();
+            let type_expr = self.parse_type_expr()?;
 
             self.advance(); // skip over DeclareAssign
 
             let value = self.parse_expression()?;
             return Ok(Some(Stmt::LocalVarDeclAssign {
                 ident,
-                type_ident: Some(type_ident),
+                type_expr: Some(type_expr),
+                value,
+            }));
+        }
+        // case when defining w pointer
+        if self.matches_in_row(&[TokenType::Ident, TokenType::Star]) {
+            self.advance();
+            let ident = self.unwrap_current_token().unwrap_value();
+            
+            let type_expr = self.parse_type_expr()?;
+            
+            self.try_consume_token(TokenType::DeclareAssign, "Expected ':='")?;
+
+            let value = self.parse_expression()?;
+            return Ok(Some(Stmt::LocalVarDeclAssign {
+                ident,
+                type_expr: Some(type_expr),
                 value,
             }));
         }
         Ok(None)
+    }
+    
+    fn parse_type_expr(&mut self) -> Result<TypeExpr, ParserError> {
+        if self.matches_advance(TokenType::Star) {
+            return Ok(TypeExpr::pointer(self.parse_type_expr()?));
+        }
+        if self.matches_any_advance(&[TokenType::Ident, TokenType::ModIdent]) {
+            return Ok(TypeExpr::Ident(self.ident_token_to_ident()));
+        }
+        ParserError::new("Expected type expression", self.peek().cloned()).wrap()
     }
 
     #[allow(dead_code)]
@@ -276,14 +303,14 @@ impl Parser {
         // parse arguments
         let mut args = Vec::new();
 
-        if !self.matches(TokenType::CloseParen) {
+        if !self.matches_advance(TokenType::CloseParen) {
             loop {
                 let expr = self.parse_expression()?;
                 args.push(expr);
-                if self.matches(TokenType::CloseParen) {
+                if self.matches_advance(TokenType::CloseParen) {
                     break;
                 }
-                if self.matches(TokenType::Comma) {
+                if self.matches_advance(TokenType::Comma) {
                     continue;
                 }
                 return ParserError::new(
@@ -323,7 +350,7 @@ impl Parser {
         let condition = self.parse_expression()?;
         let if_block = self.parse_code_block()?;
         let mut else_block = None;
-        if self.matches(TokenType::Else) {
+        if self.matches_advance(TokenType::Else) {
             else_block = Some(self.parse_code_block()?);
         }
         Ok(Stmt::If {
@@ -357,14 +384,14 @@ impl Parser {
         let mut fields = Vec::new();
         loop {
             self.skip(TokenType::LineBreak);
-            if self.matches(TokenType::CloseBrace) {
+            if self.matches_advance(TokenType::CloseBrace) {
                 break; // Struct without fields
             }
             self.try_consume_token(TokenType::Ident, "Expected variable identifier")?;
             let var_ident = self.unwrap_current_token().unwrap_value();
-            self.try_consume_token(TokenType::Ident, "Expected type identifier")?;
-            let type_ident = self.unwrap_current_token().unwrap_value();
-            fields.push(TypedVar::new(var_ident, type_ident));
+            
+            let type_expr = self.parse_type_expr()?;
+            fields.push(TypedVar::new(var_ident, type_expr));
             if !self
                 .peek()
                 .is_some_and(|t| t.is_of_type(TokenType::CloseBrace))
@@ -395,7 +422,7 @@ impl Parser {
         debug!("parsing equality expr {}", self.parser_state_dbg_info());
 
         let mut expr = self.parse_comparison_expr()?;
-        while self.matches_any(&[TokenType::ExclEquals, TokenType::DoubleEquals]) {
+        while self.matches_any_advance(&[TokenType::ExclEquals, TokenType::DoubleEquals]) {
             let operator = self.unwrap_current_token();
             println!("equality expr: chosen operator {}", operator.r#type);
             let right = self.parse_comparison_expr()?;
@@ -419,7 +446,7 @@ impl Parser {
             TokenType::Less,
             TokenType::LessOrEqual,
         ];
-        while self.matches_any(tokens) {
+        while self.matches_any_advance(tokens) {
             let operator = self
                 .current_token
                 .clone()
@@ -441,7 +468,7 @@ impl Parser {
             self.parser_state_dbg_info()
         );
         let mut expr = self.parse_factor_and_bitwise_expr()?;
-        while self.matches_any(&[TokenType::Minus, TokenType::Plus]) {
+        while self.matches_any_advance(&[TokenType::Minus, TokenType::Plus]) {
             let operator = self
                 .current_token
                 .clone()
@@ -463,7 +490,7 @@ impl Parser {
             self.parser_state_dbg_info()
         );
         let mut expr = self.parse_unary_expr()?;
-        while self.matches_any(&[
+        while self.matches_any_advance(&[
             TokenType::Slash,
             TokenType::Star,
             TokenType::Percent,
@@ -492,7 +519,7 @@ impl Parser {
     // !a   -a
     fn parse_unary_expr(&mut self) -> ExprParseResult {
         debug!("parsing unary expr {}", self.parser_state_dbg_info());
-        if self.matches_any(&[TokenType::Excl, TokenType::Minus]) {
+        if self.matches_any_advance(&[TokenType::Excl, TokenType::Minus]) {
             let operator = self
                 .current_token
                 .clone()
@@ -504,7 +531,7 @@ impl Parser {
         self.parse_dot_expr()
     }
 
-    /// Tries to convert the current Ident/ModIdent token into a Ident  
+    /// Tries to convert the current Ident/ModIdent token into an Ident  
     #[inline]
     fn ident_token_to_ident(&self) -> Ident {
         let token = self.unwrap_current_token();
@@ -531,14 +558,14 @@ impl Parser {
         let mut expr = self.parse_primary_expr()?;
 
         // then, while there's a '.', chain
-        while self.matches(TokenType::Dot) {
+        while self.matches_advance(TokenType::Dot) {
             // we're already past the '.'
             self.try_consume_token2(
                 &[TokenType::Ident, TokenType::ModIdent],
                 "Expected identifier after '.'",
             )?;
             let ident = self.ident_token_to_ident();
-            if self.matches(TokenType::OpenParen) {
+            if self.matches_advance(TokenType::OpenParen) {
                 let fn_call = self.parse_fn_call(ident)?;
                 expr = Expr::DotExpr(DotExpr::FnCall {
                     called_on: Box::new(expr),
@@ -568,15 +595,15 @@ impl Parser {
     fn parse_primary_expr(&mut self) -> ExprParseResult {
         debug!("parsing primary expr {}", self.parser_state_dbg_info());
 
-        if self.matches(TokenType::True) {
+        if self.matches_advance(TokenType::True) {
             debug!("Ok, returning boolean literal expr");
             return Ok(Expr::BoolLiteral(true));
         }
-        if self.matches(TokenType::False) {
+        if self.matches_advance(TokenType::False) {
             debug!("Ok, returning boolean literal expr");
             return Ok(Expr::BoolLiteral(false));
         }
-        if self.matches(TokenType::StringLiteral) {
+        if self.matches_advance(TokenType::StringLiteral) {
             debug!("Ok, returning string literal expr");
             return Ok(Expr::StringLiteral(
                 self.unwrap_current_token().unwrap_value(),
@@ -591,15 +618,15 @@ impl Parser {
                 token.r#type.try_into().unwrap(),
             ));
         }
-        if self.matches(TokenType::OpenParen) {
+        if self.matches_advance(TokenType::OpenParen) {
             let expr = self.parse_expression()?;
             self.try_consume_token(TokenType::CloseParen, "Expected ')' after expression.")?;
             debug!("Ok, returning grouping expr");
             return Ok(Expr::Grouping(Box::new(expr)));
         }
-        if self.matches_any(&[TokenType::Ident, TokenType::ModIdent]) {
+        if self.matches_any_advance(&[TokenType::Ident, TokenType::ModIdent]) {
             let ident = self.ident_token_to_ident();
-            if self.matches(TokenType::OpenParen) {
+            if self.matches_advance(TokenType::OpenParen) {
                 let fn_call = self.parse_fn_call(ident)?;
                 return Ok(Expr::FnCall(fn_call));
             }
@@ -689,7 +716,7 @@ impl Parser {
     }
 
     /// checks if next token is of one of the given types, then moves on to that token
-    fn matches_any(&mut self, tokens: &[TokenType]) -> bool {
+    fn matches_any_advance(&mut self, tokens: &[TokenType]) -> bool {
         if self.is_next_of_types(tokens) {
             self.advance();
             return true;
@@ -698,7 +725,7 @@ impl Parser {
     }
 
     #[track_caller]
-    fn matches(&mut self, token: TokenType) -> bool {
+    fn matches_advance(&mut self, token: TokenType) -> bool {
         debug!("{}", std::panic::Location::caller());
         if self.is_next_of_type(token) {
             self.advance();

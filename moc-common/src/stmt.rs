@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::{expr::Expr, BinaryOp, CodeBlock};
+use crate::{BinaryOp, CodeBlock, expr::{Expr, TypeExpr}};
 
 #[derive(Clone, Debug, Serialize)]
 pub enum Stmt {
@@ -8,7 +8,7 @@ pub enum Stmt {
     // a i32 (declaring variable)
     LocalVarDecl {
         ident: String,
-        type_ident: String
+        type_expr: TypeExpr
     },
     // <expr> = <expr> (updating value)
     Assignmt {
@@ -24,12 +24,11 @@ pub enum Stmt {
     // a i32 := 10 OR a := 10 (infers type)
     LocalVarDeclAssign {
         ident: String,
-        type_ident: Option<String>,
+        type_expr: Option<TypeExpr>,
         value: Expr,
     },
     Break,
     Expr(Expr), // expression statement (like function call)
-    
     ForLoop {
         condition: Expr,
         code_block: CodeBlock,

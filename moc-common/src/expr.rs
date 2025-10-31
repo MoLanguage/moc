@@ -52,7 +52,7 @@ impl Ident {
     pub fn base(&self) -> &String {
         match self {
             Ident::Simple(ident) => &ident,
-            Ident::WithModulePrefix(_, ident) => &ident,
+            Ident::WithModulePrefix(_, suffix) => &suffix,
         }
     }
 }
@@ -61,6 +61,12 @@ impl Ident {
 pub enum TypeExpr {
     Ident(Ident),
     Pointer(Box<TypeExpr>)
+}
+
+impl TypeExpr {
+    pub fn pointer(type_expr: Self) -> Self {
+        Self::Pointer(Box::new(type_expr))
+    }
 }
 
 impl Expr {

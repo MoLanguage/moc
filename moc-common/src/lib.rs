@@ -14,7 +14,7 @@ use std::{
 use derive_more::Display;
 use serde::Serialize;
 
-use crate::stmt::Stmt;
+use crate::{expr::TypeExpr, stmt::Stmt};
 
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct CodeLocation {
@@ -143,11 +143,11 @@ pub struct TypedVar {
     /// the variable's identifier
     ident: String,
     /// the type identifier
-    type_ident: String,
+    type_expr: TypeExpr,
 }
 
 impl TypedVar {
-    pub fn new(ident: String, type_ident: String) -> Self {
-        Self { ident, type_ident }
+    pub fn new(ident: String, type_expr: TypeExpr) -> Self {
+        Self { ident, type_expr }
     }
 }
