@@ -184,14 +184,14 @@ impl Parser {
                 TokenType::For => return self.parse_for_loop(),
                 TokenType::If => return self.parse_if_else_stmt(),
                 TokenType::Ret => return self.parse_ret_stmt(),
-                TokenType::Ident | TokenType::ModIdent => {
+                TokenType::Ident | TokenType::ModIdent | TokenType::Star => {
                     // Parse variable declarations
                     if let Some(var_decl) = self.parse_var_decl()? {
                         return Ok(var_decl);
                     }
 
                     // Parse assignments
-                    let dot_expr = self.parse_dot_expr()?;
+                    let dot_expr = self.parse_unary_expr()?; // parsing unary expr because of pointer deref operator *, maybe add seperate parsing step?
                     if self.matches_advance(TokenType::Equals) {
                         let new_value = self.parse_expression()?;
                         //self.consume_line_terminator()?; // we'll see if we need this.. keeping this commented out for now.
@@ -513,13 +513,13 @@ impl Parser {
     }
 
     // Parsing:
-    // (! | -)?<expr>
+    // (! | - | & | *)?<expr>
     //
     // # Examples:
-    // !a   -a
+    // !a   -a   &a   *a
     fn parse_unary_expr(&mut self) -> ExprParseResult {
         debug!("parsing unary expr {}", self.parser_state_dbg_info());
-        if self.matches_any_advance(&[TokenType::Excl, TokenType::Minus]) {
+        if self.matches_any_advance(&[TokenType::Excl, TokenType::Minus, TokenType::Ampersand, TokenType::Star]) {
             let operator = self
                 .current_token
                 .clone()
