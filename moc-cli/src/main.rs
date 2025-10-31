@@ -34,7 +34,7 @@ fn main() {
         let ron_ast = ron::ser::to_string_pretty(&ast, config).unwrap();
         println!("{}", ron_ast);
     }
-    moc_llvm::compile_with_llvm();
+    //moc_llvm::compile_with_llvm();
     if !result.errors.is_empty() {
         for error in result.errors {
             println!("Compiler error: {:?}", error)
