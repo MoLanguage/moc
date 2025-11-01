@@ -243,10 +243,8 @@ impl Parser {
             }));
         }
         
-        // Declaration with explicit type
-        if self.matches_in_row(&[TokenType::Ident, TokenType::Ident, TokenType::DeclareAssign]) 
-            
-        { // doesnt work when trying to parse type expr
+        // Declaration with simple type
+        if self.matches_in_row(&[TokenType::Ident, TokenType::Ident, TokenType::DeclareAssign]) { 
             self.advance();
             let ident = self.unwrap_current_token().unwrap_value();
 
@@ -261,7 +259,7 @@ impl Parser {
                 value,
             }));
         }
-        // case when defining w pointer
+        // Declaration with pointer type
         if self.matches_in_row(&[TokenType::Ident, TokenType::Star]) {
             self.advance();
             let ident = self.unwrap_current_token().unwrap_value();
