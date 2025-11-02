@@ -60,7 +60,8 @@ impl Ident {
 #[derive(Debug, Clone, Serialize)]
 pub enum TypeExpr {
     Ident(Ident),
-    Pointer(Box<TypeExpr>)
+    Pointer(Box<TypeExpr>),
+    Array { length: Option<usize>, type_expr: Box<TypeExpr> }
 }
 
 impl TypeExpr {

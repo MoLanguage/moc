@@ -159,6 +159,14 @@ impl<'a> Lexer<'a> {
                         self.advance();
                         break ok_token!(self, CloseBrace);
                     }
+                    '[' => {
+                        self.advance();
+                        break ok_token!(self, OpenBrack);
+                    }
+                    ']' => {
+                        self.advance();
+                        break ok_token!(self, CloseBrack);
+                    }
                     '(' => {
                         self.advance();
                         break ok_token!(self, OpenParen);

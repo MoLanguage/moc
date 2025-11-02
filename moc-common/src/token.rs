@@ -46,6 +46,8 @@ pub enum TokenType {
     Caret, // ^
     CloseBrace,
     CloseParen,
+    OpenBrack,
+    CloseBrack,
     Colon,
     Comma,
     DeclareAssign, // :=

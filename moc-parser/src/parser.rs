@@ -242,9 +242,9 @@ impl Parser {
                 value,
             }));
         }
-        
+
         // Declaration with simple type
-        if self.matches_in_row(&[TokenType::Ident, TokenType::Ident, TokenType::DeclareAssign]) { 
+        if self.matches_in_row(&[TokenType::Ident, TokenType::Ident, TokenType::DeclareAssign]) {
             self.advance();
             let ident = self.unwrap_current_token().unwrap_value();
 
@@ -259,13 +259,15 @@ impl Parser {
                 value,
             }));
         }
-        // Declaration with pointer type
-        if self.matches_in_row(&[TokenType::Ident, TokenType::Star]) {
+        // Declaration with pointer type or array type
+        if self.matches_in_row(&[TokenType::Ident, TokenType::Star])
+            || self.matches_in_row(&[TokenType::Ident, TokenType::OpenBrack])
+        {
             self.advance();
             let ident = self.unwrap_current_token().unwrap_value();
-            
+
             let type_expr = self.parse_type_expr()?;
-            
+
             self.try_consume_token(TokenType::DeclareAssign, "Expected ':='")?;
 
             let value = self.parse_expression()?;
@@ -277,8 +279,25 @@ impl Parser {
         }
         Ok(None)
     }
-    
+
     fn parse_type_expr(&mut self) -> Result<TypeExpr, ParserError> {
+        let mut array_length = None;
+        if self.matches_advance(TokenType::OpenBrack) {
+            if self.matches_any_advance(&[TokenType::DecimalIntegerNumberLiteral]) {
+                let length: usize = self
+                    .unwrap_current_token()
+                    .unwrap_value()
+                    .parse()
+                    .expect("If this panics, there is a lexer bug");
+                array_length = Some(length);
+            }
+            
+            self.try_consume_token(TokenType::CloseBrack, "Expected closed bracket '['")?;
+            return Ok(TypeExpr::Array {
+                length: array_length,
+                type_expr: Box::new(self.parse_type_expr()?),
+            });
+        }
         if self.matches_advance(TokenType::Star) {
             return Ok(TypeExpr::pointer(self.parse_type_expr()?));
         }
@@ -387,7 +406,7 @@ impl Parser {
             }
             self.try_consume_token(TokenType::Ident, "Expected variable identifier")?;
             let var_ident = self.unwrap_current_token().unwrap_value();
-            
+
             let type_expr = self.parse_type_expr()?;
             fields.push(TypedVar::new(var_ident, type_expr));
             if !self
@@ -517,7 +536,12 @@ impl Parser {
     // !a   -a   &a   *a
     fn parse_unary_expr(&mut self) -> ExprParseResult {
         debug!("parsing unary expr {}", self.parser_state_dbg_info());
-        if self.matches_any_advance(&[TokenType::Excl, TokenType::Minus, TokenType::Ampersand, TokenType::Star]) {
+        if self.matches_any_advance(&[
+            TokenType::Excl,
+            TokenType::Minus,
+            TokenType::Ampersand,
+            TokenType::Star,
+        ]) {
             let operator = self
                 .current_token
                 .clone()
@@ -529,7 +553,7 @@ impl Parser {
         self.parse_dot_expr()
     }
 
-    /// Tries to convert the current Ident/ModIdent token into an Ident  
+    /// Tries to convert the current Ident/ModIdent token into an Ident
     #[inline]
     fn ident_token_to_ident(&self) -> Ident {
         let token = self.unwrap_current_token();
