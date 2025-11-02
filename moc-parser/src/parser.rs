@@ -184,6 +184,8 @@ impl Parser {
                 TokenType::For => return self.parse_for_loop(),
                 TokenType::If => return self.parse_if_else_stmt(),
                 TokenType::Ret => return self.parse_ret_stmt(),
+                TokenType::Defer => return self.parse_defer_stmt(),
+                TokenType::OpenBrace => return Ok(Stmt::CodeBlock(self.parse_code_block()?)),
                 TokenType::Ident | TokenType::ModIdent | TokenType::Star => {
                     // Parse variable declarations
                     if let Some(var_decl) = self.parse_var_decl()? {
@@ -400,6 +402,12 @@ impl Parser {
             if_block,
             else_block,
         })
+    }
+    
+    fn parse_defer_stmt(&mut self) -> Result<Stmt, ParserError> {
+        self.advance();
+        let stmt = self.parse_stmt()?;
+        Ok(Stmt::Defer(Box::new(stmt)))
     }
 
     fn parse_ret_stmt(&mut self) -> Result<Stmt, ParserError> {

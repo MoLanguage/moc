@@ -28,6 +28,7 @@ pub enum Stmt {
         value: Expr,
     },
     Break,
+    Defer(Box<Stmt>),
     Expr(Expr), // expression statement (like function call)
     ForLoop {
         condition: Expr,
@@ -39,4 +40,5 @@ pub enum Stmt {
         else_block: Option<CodeBlock>,
     },
     Ret(Expr), // return statement
+    CodeBlock(CodeBlock),
 }
