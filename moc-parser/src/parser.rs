@@ -1,4 +1,4 @@
-use std::vec::IntoIter;
+use std::{num::NonZeroU128, vec::IntoIter};
 
 use itertools::{PeekNth, peek_nth};
 use log::debug;
@@ -280,6 +280,31 @@ impl Parser {
         Ok(None)
     }
 
+    fn parse_array_literal(&mut self) -> Result<Expr, ParserError> {
+        let mut elements = Vec::new();
+        if !self.matches_advance(TokenType::CloseBrack) {
+            loop { 
+                let element = self.parse_expression()?;
+                elements.push(element);
+                
+                if self.matches_advance(TokenType::CloseBrack) {
+                    break;
+                }
+                if self.matches_advance(TokenType::Comma) {
+                    continue;
+                } else {
+                    return ParserError::new("Expected comma ',' or closed bracket ']'", self.peek().cloned()).wrap()
+                }
+            }
+        }
+        
+        let mut type_expr = None;
+        if self.matches_any(&[TokenType::Star, TokenType::OpenBrack, TokenType::Ident, TokenType::ModIdent]) {
+            type_expr = Some(self.parse_type_expr()?)
+        }
+        return Ok(Expr::ArrayLiteral { elements, type_expr });        
+    }
+
     fn parse_type_expr(&mut self) -> Result<TypeExpr, ParserError> {
         let mut array_length = None;
         if self.matches_advance(TokenType::OpenBrack) {
@@ -291,7 +316,7 @@ impl Parser {
                     .expect("If this panics, there is a lexer bug");
                 array_length = Some(length);
             }
-            
+
             self.try_consume_token(TokenType::CloseBrack, "Expected closed bracket '['")?;
             return Ok(TypeExpr::Array {
                 length: array_length,
@@ -654,6 +679,9 @@ impl Parser {
             }
             return Ok(Expr::Variable { ident });
         }
+        if self.matches_advance(TokenType::OpenBrack) {
+            return self.parse_array_literal();
+        }
         //return Ok(Expr::Empty);
         ParserError::new("Expected an expression", self.peek().cloned()).wrap()
     }
@@ -751,6 +779,22 @@ impl Parser {
         debug!("{}", std::panic::Location::caller());
         if self.is_next_of_type(token) {
             self.advance();
+            return true;
+        }
+        false
+    }
+    
+    /// checks if next token is of one of the given types
+    fn matches_any(&mut self, tokens: &[TokenType]) -> bool {
+        if self.is_next_of_types(tokens) {
+            return true;
+        }
+        false
+    }
+
+    fn matches(&mut self, token: TokenType) -> bool {
+        debug!("{}", std::panic::Location::caller());
+        if self.is_next_of_type(token) {
             return true;
         }
         false

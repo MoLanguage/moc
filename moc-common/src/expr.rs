@@ -1,9 +1,8 @@
-use std::collections::VecDeque;
-
 use serde::Serialize;
 
 use crate::{
-    token::{NumberLiteralType, Token}, ModulePath
+    ModulePath,
+    token::{NumberLiteralType, Token},
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -15,18 +14,21 @@ pub enum Expr {
         right_expr: Box<Expr>,
     },
     DotExpr(DotExpr),
-    DotExprChain(VecDeque<DotExpr>),
+    ArrayLiteral {
+        elements: Vec<Expr>,
+        type_expr: Option<TypeExpr>,
+    },
     BoolLiteral(bool),
     FnCall(FnCall),
     Grouping(Box<Expr>),
     Variable {
-        ident: Ident
+        ident: Ident,
     },
     NumberLiteral(String, NumberLiteralType),
 
     StringLiteral(String),
     Unary(Token, Box<Expr>), // Operator followed by another expr
-    Empty
+    Empty,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -37,14 +39,20 @@ pub struct FnCall {
 
 #[derive(Debug, Clone, Serialize)]
 pub enum DotExpr {
-    FnCall { called_on: Box<Expr>, fn_call: FnCall },
-    FieldAccess { called_on: Box<Expr>, field_ident: String },
+    FnCall {
+        called_on: Box<Expr>,
+        fn_call: FnCall,
+    },
+    FieldAccess {
+        called_on: Box<Expr>,
+        field_ident: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub enum Ident {
     Simple(String),
-    WithModulePrefix(ModulePath, String)
+    WithModulePrefix(ModulePath, String),
 }
 
 impl Ident {
@@ -61,7 +69,10 @@ impl Ident {
 pub enum TypeExpr {
     Ident(Ident),
     Pointer(Box<TypeExpr>),
-    Array { length: Option<usize>, type_expr: Box<TypeExpr> }
+    Array {
+        length: Option<usize>,
+        type_expr: Box<TypeExpr>,
+    },
 }
 
 impl TypeExpr {
