@@ -367,6 +367,7 @@ impl<'a> Lexer<'a> {
         literal_type: NumberLiteralType,
     ) -> LexerResult {
         self.advance_n(2);
+        let mut first = true;
         while let Some(ch) = self.peek_char() {
             if ch.is_digit(literal_type.get_radix()) {
                 num.push(ch);
@@ -374,9 +375,12 @@ impl<'a> Lexer<'a> {
             } else if ch == '_' {
                 self.advance();
                 continue;
+            } else if ch.is_digit(16) || first { // max digit
+                return Err(LexerError::UnexpectedCharacterLexingNonDecimalNumberLiteral(self.location));
             } else {
                 break;
             }
+            first = false;
         }
         return Ok(Token::number_literal(
             num.clone(),
