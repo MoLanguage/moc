@@ -673,6 +673,14 @@ impl Parser {
         }
         if self.matches_any_advance(&[TokenType::Ident, TokenType::ModIdent]) {
             let ident = self.ident_token_to_ident();
+            if self.matches_advance(TokenType::OpenBrack) {
+                let index = self.parse_expression()?;
+                if self.matches_advance(TokenType::CloseBrack) {
+                    return Ok(Expr::ArrayAccessor { ident, index: Box::new(index) })
+                } else {
+                    return Err(ParserError::new("Expected closed bracket ']'", self.peek().cloned()))
+                }
+            }
             if self.matches_advance(TokenType::OpenParen) {
                 let fn_call = self.parse_fn_call(ident)?;
                 return Ok(Expr::FnCall(fn_call));

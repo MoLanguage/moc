@@ -18,6 +18,10 @@ pub enum Expr {
         elements: Vec<Expr>,
         type_expr: Option<TypeExpr>,
     },
+    ArrayAccessor {
+        ident: Ident, 
+        index: Box<Expr>,
+    },
     BoolLiteral(bool),
     FnCall(FnCall),
     Grouping(Box<Expr>),
