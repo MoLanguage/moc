@@ -77,7 +77,7 @@ impl Parser {
     fn parse_use_decl(&mut self) -> Result<Decl, ParserError> {
         // Just peeked Use token
         self.advance();
-        self.try_consume_token(TokenType::ModIdent, "Expected module identifier")?;
+        self.try_consume_token(TokenType::ModulePath, "Expected module identifier")?;
         let identifier = self.unwrap_current_token().unwrap_value();
         let module_ident = ModulePath::from_string(&identifier);
         let decl;
@@ -186,7 +186,7 @@ impl Parser {
                 TokenType::Ret => return self.parse_ret_stmt(),
                 TokenType::Defer => return self.parse_defer_stmt(),
                 TokenType::OpenBrace => return Ok(Stmt::CodeBlock(self.parse_code_block()?)),
-                TokenType::Ident | TokenType::ModIdent | TokenType::Star => {
+                TokenType::Ident | TokenType::ModulePath | TokenType::Star => {
                     // Parse variable declarations
                     if let Some(var_decl) = self.parse_var_decl()? {
                         return Ok(var_decl);
@@ -301,7 +301,7 @@ impl Parser {
         }
         
         let mut type_expr = None;
-        if self.matches_any(&[TokenType::Star, TokenType::OpenBrack, TokenType::Ident, TokenType::ModIdent]) {
+        if self.matches_any(&[TokenType::Star, TokenType::OpenBrack, TokenType::Ident, TokenType::ModulePath]) {
             type_expr = Some(self.parse_type_expr()?)
         }
         return Ok(Expr::ArrayLiteral { elements, type_expr });        
@@ -328,7 +328,7 @@ impl Parser {
         if self.matches_advance(TokenType::Star) {
             return Ok(TypeExpr::pointer(self.parse_type_expr()?));
         }
-        if self.matches_any_advance(&[TokenType::Ident, TokenType::ModIdent]) {
+        if self.matches_any_advance(&[TokenType::Ident, TokenType::ModulePath]) {
             return Ok(TypeExpr::Ident(self.ident_token_to_ident()));
         }
         ParserError::new("Expected type expression", self.peek().cloned()).wrap()
@@ -597,7 +597,7 @@ impl Parser {
         let ident = token.unwrap_value();
         return match token.r#type {
             TokenType::Ident => Ident::Simple(ident),
-            TokenType::ModIdent => {
+            TokenType::ModulePath => {
                 let mut module_path_prefix = ModulePath::from_string(&ident);
                 let ident = module_path_prefix.remove_and_get_last_path();
 
@@ -620,7 +620,7 @@ impl Parser {
         while self.matches_advance(TokenType::Dot) {
             // we're already past the '.'
             self.try_consume_token2(
-                &[TokenType::Ident, TokenType::ModIdent],
+                &[TokenType::Ident, TokenType::ModulePath],
                 "Expected identifier after '.'",
             )?;
             let ident = self.ident_token_to_ident();
@@ -683,7 +683,7 @@ impl Parser {
             debug!("Ok, returning grouping expr");
             return Ok(Expr::Grouping(Box::new(expr)));
         }
-        if self.matches_any_advance(&[TokenType::Ident, TokenType::ModIdent]) {
+        if self.matches_any_advance(&[TokenType::Ident, TokenType::ModulePath]) {
             let ident = self.ident_token_to_ident();
             if self.matches_advance(TokenType::OpenBrack) {
                 let index = self.parse_expression()?;

@@ -75,7 +75,7 @@ pub enum TokenType {
     Percent,
     Pipe,
     ModAssign,
-    ModIdent,
+    ModulePath,
     MultAssign,
     ExclEquals,
     DecimalIntegerNumberLiteral,
@@ -145,9 +145,9 @@ impl Token {
             span,
         }
     }
-    pub fn mod_ident(ident: String, span: CodeSpan) -> Self {
+    pub fn module_path(ident: String, span: CodeSpan) -> Self {
         Self {
-            r#type: TokenType::ModIdent,
+            r#type: TokenType::ModulePath,
             value: Some(ident.into()),
             span,
         }

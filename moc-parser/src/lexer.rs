@@ -422,7 +422,7 @@ impl<'a> Lexer<'a> {
             "use" => token!(self, Use),
             _ => {
                 if contains_colon {
-                    Token::mod_ident(ident, (self.last_token_end, self.location).into())
+                    Token::module_path(ident, (self.last_token_end, self.location).into())
                 } else {
                     Token::ident(ident, (self.last_token_end, self.location).into())
                 }
