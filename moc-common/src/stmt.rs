@@ -39,6 +39,6 @@ pub enum Stmt {
         if_block: CodeBlock,
         else_block: Option<CodeBlock>,
     },
-    Ret(Expr), // return statement
+    Ret(Option<Expr>), // return statement
     CodeBlock(CodeBlock),
 }

@@ -412,8 +412,12 @@ impl Parser {
 
     fn parse_ret_stmt(&mut self) -> Result<Stmt, ParserError> {
         self.advance();
-        let expr = self.parse_expression()?;
-        Ok(Stmt::Ret(expr))
+        if self.matches_advance(TokenType::LineBreak) {
+            Ok(Stmt::Ret(None))
+        } else {
+            let expr = self.parse_expression()?;
+            Ok(Stmt::Ret(Some(expr)))
+        }
     }
 
     /*
