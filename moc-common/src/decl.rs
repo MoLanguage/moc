@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::{CodeBlock, ModulePath, TypedVar};
+use crate::{CodeBlock, ModulePath, TypedVar, expr::TypeExpr};
 
 #[derive(Debug, Clone, Serialize)]
 pub enum Decl {
@@ -8,7 +8,7 @@ pub enum Decl {
         // function declaration
         ident: String,
         params: Vec<TypedVar>,
-        return_type: Option<String>,
+        return_type: Option<TypeExpr>,
         body: CodeBlock,
     },
     Use {

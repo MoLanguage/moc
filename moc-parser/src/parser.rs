@@ -129,8 +129,9 @@ impl Parser {
         }
         // Parse return type
         let mut return_type = None;
-        if self.matches_advance(TokenType::Ident) {
-            return_type = Some(self.unwrap_current_token().unwrap_value());
+        if !self.matches_any(&[TokenType::LineBreak, TokenType::OpenBrace]) {
+            let type_expr  = self.parse_type_expr()?;
+            return_type = Some(type_expr);
         }
         // Parse body / code
         self.skip(TokenType::LineBreak);
@@ -141,7 +142,6 @@ impl Parser {
             return_type,
             body,
         };
-
         Ok(fn_decl)
     }
 
