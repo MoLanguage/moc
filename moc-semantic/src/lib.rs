@@ -7,7 +7,7 @@ use std::collections::HashMap;
 pub enum Type {
     Builtin(BuiltinType),
     Custom(CustomType),
-    Array(Box<Type>),
+    Array(Box<Type>, usize),
     Pointer(Box<Type>)
 }
 
