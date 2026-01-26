@@ -1,4 +1,4 @@
-use std::{num::NonZeroU128, vec::IntoIter};
+use std::vec::IntoIter;
 
 use itertools::{PeekNth, peek_nth};
 use log::debug;
@@ -500,7 +500,7 @@ impl Parser {
             TokenType::Less,
             TokenType::LessOrEqual,
         ];
-        while self.matches_any_advance(tokens) {
+        while self.matches_any_advance(tokens.as_slice()) {
             let operator = self
                 .current_token
                 .clone()
