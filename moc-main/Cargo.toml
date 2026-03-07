@@ -6,4 +6,4 @@ edition = "2024"
 [dependencies]
 moc-parser ={ path = "../moc-parser"}
 moc-common = { path = "../moc-common"}
-log = "0.4.28"
+log = "0.4.29"
