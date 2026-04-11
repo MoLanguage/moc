@@ -7,14 +7,14 @@ use crate::{BinaryOp, CodeSpan};
 
 #[macro_export]
 macro_rules! token {
-    ($token_type:ident, $start:expr, $end:expr) => {
-        $crate::token::Token::new($crate::token::TokenType::$token_type, CodeSpan::from(($start, $end)))
+    ($token_kind:ident, $start:expr, $end:expr) => {
+        $crate::token::Token::new($crate::token::TokenKind::$token_kind, CodeSpan::from(($start, $end)))
     }
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Token {
-    pub r#type: TokenType,
+    pub kind: TokenKind,
     pub value: Option<String>,
     pub span: CodeSpan,
 }
@@ -22,14 +22,14 @@ pub struct Token {
 impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(value) = self.value() {
-            write!(f, "{} from {} to {}, value: \"{}\"", self.r#type, self.span.start, self.span.end, value.escape_default())
+            write!(f, "{} from {} to {}, value: \"{}\"", self.kind, self.span.start, self.span.end, value.escape_default())
         } else {
-            write!(f, "{} from {} to {}", self.r#type, self.span.start, self.span.end)
+            write!(f, "{} from {} to {}", self.kind, self.span.start, self.span.end)
         }
     }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Display, Serialize)]
-pub enum TokenType {
+pub enum TokenKind {
     AddAssign,           // +=
     Ampersand,           // &
     Equals,              // =
@@ -119,13 +119,13 @@ impl NumberLiteralType {
         }
     }
 
-    pub fn get_token_type(&self) -> TokenType {
+    pub fn get_token_type(&self) -> TokenKind {
         match self {
-            NumberLiteralType::DecimalInteger => TokenType::DecimalIntegerNumberLiteral,
-            NumberLiteralType::DecimalPoint => TokenType::DecimalPointNumberLiteral,
-            NumberLiteralType::BinaryInteger => TokenType::BinaryIntegerNumberLiteral,
-            NumberLiteralType::OctalInteger => TokenType::OctalIntegerNumberLiteral,
-            NumberLiteralType::HexadecimalInteger => TokenType::HexadecimalIntegerNumberLiteral,
+            NumberLiteralType::DecimalInteger => TokenKind::DecimalIntegerNumberLiteral,
+            NumberLiteralType::DecimalPoint => TokenKind::DecimalPointNumberLiteral,
+            NumberLiteralType::BinaryInteger => TokenKind::BinaryIntegerNumberLiteral,
+            NumberLiteralType::OctalInteger => TokenKind::OctalIntegerNumberLiteral,
+            NumberLiteralType::HexadecimalInteger => TokenKind::HexadecimalIntegerNumberLiteral,
         }
     }
 }
@@ -133,44 +133,44 @@ impl NumberLiteralType {
 impl Token {
     pub fn string_literal(literal: String, span: CodeSpan) -> Self {
         Self {
-            r#type: TokenType::StringLiteral,
+            kind: TokenKind::StringLiteral,
             value: Some(literal.into()),
             span,
         }
     }
     pub fn ident(ident: String, span: CodeSpan) -> Self {
         Self {
-            r#type: TokenType::Ident,
+            kind: TokenKind::Ident,
             value: Some(ident.into()),
             span,
         }
     }
     pub fn module_path(ident: String, span: CodeSpan) -> Self {
         Self {
-            r#type: TokenType::ModulePath,
+            kind: TokenKind::ModulePath,
             value: Some(ident.into()),
             span,
         }
     }
     pub fn integer(value: String, span: CodeSpan) -> Self {
         Self {
-            r#type: TokenType::DecimalIntegerNumberLiteral,
+            kind: TokenKind::DecimalIntegerNumberLiteral,
             value: Some(value),
             span,
         }
     }
     pub fn number_literal(value: String, number_literal_type: NumberLiteralType, span: CodeSpan) -> Self {
-        Self { r#type: number_literal_type.get_token_type(), value: Some(value), span }
+        Self { kind: number_literal_type.get_token_type(), value: Some(value), span }
     }
-    pub fn new(r#type: TokenType, span: CodeSpan) -> Self {
+    pub fn new(r#type: TokenKind, span: CodeSpan) -> Self {
         Self {
-            r#type,
+            kind: r#type,
             value: None,
             span,
         }
     }
-    pub fn with_value(r#type: TokenType, value: String, span: CodeSpan) -> Self {
-        Self { r#type, value: Some(value), span }
+    pub fn with_value(r#type: TokenKind, value: String, span: CodeSpan) -> Self {
+        Self { kind: r#type, value: Some(value), span }
     }
     pub fn value(&self) -> Option<&String> {
         self.value.as_ref()
@@ -183,27 +183,27 @@ impl Token {
     }
 
     pub fn is_operator_assign(&self) -> bool {
-        match self.r#type {
-            TokenType::AddAssign
-            | TokenType::SubAssign
-            | TokenType::MultAssign
-            | TokenType::DivAssign
-            | TokenType::BitAndAssign
-            | TokenType::BitXorAssign
-            | TokenType::BitOrAssign => true,
+        match self.kind {
+            TokenKind::AddAssign
+            | TokenKind::SubAssign
+            | TokenKind::MultAssign
+            | TokenKind::DivAssign
+            | TokenKind::BitAndAssign
+            | TokenKind::BitXorAssign
+            | TokenKind::BitOrAssign => true,
             _ => false,
         }
     }
 
     pub fn is_binary_op(&self) -> bool {
-        TryInto::<BinaryOp>::try_into(self.r#type).is_ok()
+        TryInto::<BinaryOp>::try_into(self.kind).is_ok()
     }
 
-    pub fn is_of_type(&self, r#type: TokenType) -> bool {
-        self.r#type == r#type
+    pub fn is_of_type(&self, r#type: TokenKind) -> bool {
+        self.kind == r#type
     }
 
-    pub fn is_of_types(&self, types: &[TokenType]) -> bool {
+    pub fn is_of_types(&self, types: &[TokenKind]) -> bool {
         for r#type in types {
             if self.is_of_type(*r#type) {
                 return true;
@@ -213,17 +213,17 @@ impl Token {
     }
 
     pub fn is_number_literal(&self) -> bool {
-        TryInto::<NumberLiteralType>::try_into(self.r#type).is_ok()
+        TryInto::<NumberLiteralType>::try_into(self.kind).is_ok()
     }
 }
 
-impl From<TokenType> for Token {
-    fn from(r#type: TokenType) -> Self {
-        Self { r#type, value: None, span: CodeSpan::default() }
+impl From<TokenKind> for Token {
+    fn from(r#type: TokenKind) -> Self {
+        Self { kind: r#type, value: None, span: CodeSpan::default() }
     }
 }
 
-impl From<NumberLiteralType> for TokenType {
+impl From<NumberLiteralType> for TokenKind {
     fn from(value: NumberLiteralType) -> Self {
         value.get_token_type()
     }
@@ -231,16 +231,16 @@ impl From<NumberLiteralType> for TokenType {
 
 #[derive(Debug)]
 pub struct NonNumberLiteralTokenTypeError;
-impl TryFrom<TokenType> for NumberLiteralType {
+impl TryFrom<TokenKind> for NumberLiteralType {
     type Error = NonNumberLiteralTokenTypeError;
 
-    fn try_from(value: TokenType) -> Result<Self, Self::Error> {
+    fn try_from(value: TokenKind) -> Result<Self, Self::Error> {
         match value {
-            TokenType::DecimalIntegerNumberLiteral => Ok(NumberLiteralType::DecimalInteger),
-            TokenType::DecimalPointNumberLiteral => Ok(NumberLiteralType::DecimalPoint),
-            TokenType::BinaryIntegerNumberLiteral => Ok(NumberLiteralType::BinaryInteger),
-            TokenType::OctalIntegerNumberLiteral => Ok(NumberLiteralType::OctalInteger),
-            TokenType::HexadecimalIntegerNumberLiteral => Ok(NumberLiteralType::HexadecimalInteger),
+            TokenKind::DecimalIntegerNumberLiteral => Ok(NumberLiteralType::DecimalInteger),
+            TokenKind::DecimalPointNumberLiteral => Ok(NumberLiteralType::DecimalPoint),
+            TokenKind::BinaryIntegerNumberLiteral => Ok(NumberLiteralType::BinaryInteger),
+            TokenKind::OctalIntegerNumberLiteral => Ok(NumberLiteralType::OctalInteger),
+            TokenKind::HexadecimalIntegerNumberLiteral => Ok(NumberLiteralType::HexadecimalInteger),
             _ => Err(NonNumberLiteralTokenTypeError)
         }
     }
@@ -248,22 +248,22 @@ impl TryFrom<TokenType> for NumberLiteralType {
 
 #[derive(Debug)]
 pub struct NonOperatorTokenError; // error if token is a non-operator token
-impl TryFrom<TokenType> for BinaryOp {
+impl TryFrom<TokenKind> for BinaryOp {
     type Error = NonOperatorTokenError;
 
-    fn try_from(value: TokenType) -> Result<Self, Self::Error> {
+    fn try_from(value: TokenKind) -> Result<Self, Self::Error> {
         match value {
-            TokenType::AddAssign | TokenType::Plus => Ok(BinaryOp::Add),
-            TokenType::SubAssign | TokenType::Minus => Ok(BinaryOp::Sub),
-            TokenType::MultAssign | TokenType::Star => Ok(BinaryOp::Mult),
-            TokenType::DivAssign | TokenType::Slash => Ok(BinaryOp::Div),
-            TokenType::ModAssign | TokenType::Percent => Ok(BinaryOp::Mod),
-            TokenType::BitAndAssign | TokenType::Ampersand => Ok(BinaryOp::BitAnd),
-            TokenType::BitXorAssign | TokenType::Caret => Ok(BinaryOp::BitXor),
-            TokenType::BitOrAssign | TokenType::Pipe => Ok(BinaryOp::BitOr),
-            TokenType::Tilde | TokenType::BitNotAssign => Ok(BinaryOp::BitNot),
-            TokenType::BitShiftLeftAssign | TokenType::BitShiftLeft => Ok(BinaryOp::BitShiftLeft),
-            TokenType::BitShiftRightAssign | TokenType::BitShiftRight => {
+            TokenKind::AddAssign | TokenKind::Plus => Ok(BinaryOp::Add),
+            TokenKind::SubAssign | TokenKind::Minus => Ok(BinaryOp::Sub),
+            TokenKind::MultAssign | TokenKind::Star => Ok(BinaryOp::Mult),
+            TokenKind::DivAssign | TokenKind::Slash => Ok(BinaryOp::Div),
+            TokenKind::ModAssign | TokenKind::Percent => Ok(BinaryOp::Mod),
+            TokenKind::BitAndAssign | TokenKind::Ampersand => Ok(BinaryOp::BitAnd),
+            TokenKind::BitXorAssign | TokenKind::Caret => Ok(BinaryOp::BitXor),
+            TokenKind::BitOrAssign | TokenKind::Pipe => Ok(BinaryOp::BitOr),
+            TokenKind::Tilde | TokenKind::BitNotAssign => Ok(BinaryOp::BitNot),
+            TokenKind::BitShiftLeftAssign | TokenKind::BitShiftLeft => Ok(BinaryOp::BitShiftLeft),
+            TokenKind::BitShiftRightAssign | TokenKind::BitShiftRight => {
                 Ok(BinaryOp::BitShiftRight)
             }
             _ => Err(NonOperatorTokenError),
@@ -280,8 +280,8 @@ mod tests {
     #[test]
     fn is_of_type_s() {
         let token = token!(Plus, CodeLocation::default(), CodeLocation::default());
-        assert!(token.is_of_type(TokenType::Plus));
-        assert!(token.is_of_types(&[TokenType::Plus, TokenType::Minus]));
-        assert!(token.is_of_types(&[TokenType::Minus, TokenType::Plus]));
+        assert!(token.is_of_type(TokenKind::Plus));
+        assert!(token.is_of_types(&[TokenKind::Plus, TokenKind::Minus]));
+        assert!(token.is_of_types(&[TokenKind::Minus, TokenKind::Plus]));
     }
 }

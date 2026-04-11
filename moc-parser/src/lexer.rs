@@ -3,7 +3,7 @@ use std::str::Chars;
 use itertools::{PeekNth, peek_nth};
 use log::debug;
 use moc_common::error::{LexerError, LexerResult};
-use moc_common::token::{NumberLiteralType, Token, TokenType};
+use moc_common::token::{NumberLiteralType, Token, TokenKind};
 use moc_common::{CodeLocation, CodeSpan};
 
 #[derive(Clone)]
@@ -14,9 +14,9 @@ pub struct Lexer<'a> {
 }
 
 macro_rules! token {
-    ($lexer:expr, $token_type:ident) => {
+    ($lexer:expr, $token_kind:ident) => {
         Token::new(
-            TokenType::$token_type,
+            TokenKind::$token_kind,
             CodeSpan::from(($lexer.last_token_end, $lexer.location)),
         )
     };
@@ -49,7 +49,7 @@ impl<'a> Lexer<'a> {
         let mut tokens = Vec::with_capacity(256);
         loop {
             let token = self.next_token()?;
-            if token.r#type == TokenType::EndOfFile {
+            if token.kind == TokenKind::EndOfFile {
                 break;
             } else {
                 tokens.push(token);
@@ -246,17 +246,17 @@ impl<'a> Lexer<'a> {
         }
         if self.peek_char() == Some('=') {
             let token_type = match ch {
-                '+' => TokenType::AddAssign,
-                '-' => TokenType::SubAssign,
-                '*' => TokenType::MultAssign,
-                '/' => TokenType::DivAssign,
-                '%' => TokenType::ModAssign,
-                '&' => TokenType::BitAndAssign,
-                '|' => TokenType::BitOrAssign,
-                '^' => TokenType::BitXorAssign,
-                '<' => TokenType::LessOrEqual,
-                '>' => TokenType::GreaterOrEqual,
-                '~' => TokenType::BitNotAssign,
+                '+' => TokenKind::AddAssign,
+                '-' => TokenKind::SubAssign,
+                '*' => TokenKind::MultAssign,
+                '/' => TokenKind::DivAssign,
+                '%' => TokenKind::ModAssign,
+                '&' => TokenKind::BitAndAssign,
+                '|' => TokenKind::BitOrAssign,
+                '^' => TokenKind::BitXorAssign,
+                '<' => TokenKind::LessOrEqual,
+                '>' => TokenKind::GreaterOrEqual,
+                '~' => TokenKind::BitNotAssign,
                 _ => unreachable!(),
             };
 
@@ -268,17 +268,17 @@ impl<'a> Lexer<'a> {
             ));
         } else {
             let token_type = match ch {
-                '+' => TokenType::Plus,
-                '-' => TokenType::Minus,
-                '*' => TokenType::Star,
-                '/' => TokenType::Slash,
-                '%' => TokenType::Percent,
-                '&' => TokenType::Ampersand,
-                '|' => TokenType::Pipe,
-                '^' => TokenType::Caret,
-                '<' => TokenType::Less,
-                '>' => TokenType::Greater,
-                '~' => TokenType::Tilde,
+                '+' => TokenKind::Plus,
+                '-' => TokenKind::Minus,
+                '*' => TokenKind::Star,
+                '/' => TokenKind::Slash,
+                '%' => TokenKind::Percent,
+                '&' => TokenKind::Ampersand,
+                '|' => TokenKind::Pipe,
+                '^' => TokenKind::Caret,
+                '<' => TokenKind::Less,
+                '>' => TokenKind::Greater,
+                '~' => TokenKind::Tilde,
                 _ => unreachable!(),
             };
             return Ok(Token::new(

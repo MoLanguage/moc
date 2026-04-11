@@ -138,6 +138,22 @@ pub enum BinaryOp {
     BitNot,        // Bitwise NOT
 }
 
+impl BinaryOp {
+    fn infix_binding_power(&self) -> (u8, u8) {
+        use BinaryOp::*;
+        match self {
+            Add | Sub => (1, 2),
+            Mult | Div => (3, 4),
+            Mod => (3, 4),
+            BitShiftLeft | BitShiftRight => todo!(),
+            BitOr => todo!(),
+            BitAnd => todo!(),
+            BitXor => todo!(),
+            BitNot => todo!(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct TypedVar {
     /// the variable's identifier

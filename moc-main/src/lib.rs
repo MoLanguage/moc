@@ -1,7 +1,7 @@
 use std::{fs::File, io::Read, path::Path};
 
 use moc_common::{ast::Ast, error::CompilerError, token::Token};
-use moc_parser::{lexer::Lexer, parser::Parser};
+use moc_parser::{lexer::Lexer, parser::RecursiveDescentParser};
 
 pub struct CompileResultData {
     pub tokens: Option<Vec<Token>>,
@@ -43,7 +43,7 @@ pub fn compile_file(path: impl AsRef<Path>, options: CompilerOptions) -> Compile
                         meta_data.tokens = Some(tokens.clone());
                     }
                     println!("Parsing now");
-                    let parser = Parser::new(tokens);
+                    let parser = RecursiveDescentParser::new(tokens);
                     match parser.parse() {
                         Ok(ast) => {
                             println!("Done parsing");
