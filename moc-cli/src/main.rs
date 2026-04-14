@@ -1,7 +1,7 @@
 use clap::Parser;
-use moc_common::{debug_utils};
+use moc_common::debug_utils;
 use moc_main::CompilerOptions;
-use ron::{ser::PrettyConfig};
+use ron::ser::PrettyConfig;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -30,11 +30,13 @@ fn main() {
         debug_utils::print_tokens(&tokens);
     }
     if let Some(ast) = result.ast {
-        let config = PrettyConfig::default().compact_arrays(true).escape_strings(true).separate_tuple_members(false);
+        let config = PrettyConfig::default()
+            .compact_arrays(true)
+            .escape_strings(true)
+            .separate_tuple_members(false);
         let ron_ast = ron::ser::to_string_pretty(&ast, config).unwrap();
         println!("{}", ron_ast);
     }
-    //moc_llvm::compile_with_llvm();
     if !result.errors.is_empty() {
         for error in result.errors {
             println!("Compiler error: {:?}", error)

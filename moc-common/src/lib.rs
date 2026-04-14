@@ -5,13 +5,13 @@ pub mod error;
 pub mod expr;
 pub mod stmt;
 pub mod token;
+pub mod op;
 
 use std::{
     collections::VecDeque,
     fmt::{Debug, Display},
 };
 
-use derive_more::Display;
 use serde::Serialize;
 
 use crate::{expr::TypeExpr, stmt::Stmt};
@@ -48,6 +48,7 @@ pub struct CodeSpan {
 
 impl CodeSpan {
     // Shouldnt ever be true really >:(
+    // What the heck did I think here?
     pub fn spans_across_lines(&self) -> bool {
         !self.start.is_in_same_line(&self.end)
     }
@@ -120,37 +121,6 @@ impl Display for ModulePath {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("ModuleIdentifier")?;
         self.path.fmt(f)
-    }
-}
-
-#[derive(Clone, Copy, Debug, Display, Serialize)]
-pub enum BinaryOp {
-    Add,
-    Sub,           // Subtract
-    Mult,          // Multiply
-    Div,           // Divide
-    Mod,           // Modulo
-    BitShiftLeft,  // Bitshift left
-    BitShiftRight, // Bitshift right
-    BitOr,         // Bitwise OR
-    BitAnd,        // Bitwise AND
-    BitXor,        // Bitwise XOR
-    BitNot,        // Bitwise NOT
-}
-
-impl BinaryOp {
-    fn infix_binding_power(&self) -> (u8, u8) {
-        use BinaryOp::*;
-        match self {
-            Add | Sub => (1, 2),
-            Mult | Div => (3, 4),
-            Mod => (3, 4),
-            BitShiftLeft | BitShiftRight => todo!(),
-            BitOr => todo!(),
-            BitAnd => todo!(),
-            BitXor => todo!(),
-            BitNot => todo!(),
-        }
     }
 }
 

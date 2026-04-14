@@ -1,8 +1,7 @@
 use serde::Serialize;
 
 use crate::{
-    ModulePath,
-    token::{NumberLiteralType, Token},
+    ModulePath, op::{BinaryOp, UnaryOp}, token::NumberLiteralKind
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -10,7 +9,8 @@ pub enum Expr {
     // Expressions
     Binary {
         left_expr: Box<Expr>,
-        operator: Token,
+        operator: BinaryOp
+        ,
         right_expr: Box<Expr>,
     },
     DotExpr(DotExpr),
@@ -19,7 +19,7 @@ pub enum Expr {
         type_expr: Option<TypeExpr>,
     },
     ArrayAccessor {
-        ident: Ident, 
+        ident: Ident,
         index: Box<Expr>,
     },
     BoolLiteral(bool),
@@ -28,10 +28,13 @@ pub enum Expr {
     Variable {
         ident: Ident,
     },
-    NumberLiteral(String, NumberLiteralType),
+    NumberLiteral(String, NumberLiteralKind),
 
     StringLiteral(String),
-    Unary(Token, Box<Expr>), // Operator followed by another expr
+    Unary {
+        operator: UnaryOp,
+        expr: Box<Expr>,
+    }, // Operator followed by another expr
     Empty,
 }
 
@@ -86,7 +89,7 @@ impl TypeExpr {
 }
 
 impl Expr {
-    pub fn binary(left: Self, operator: Token, right: Self) -> Self {
+    pub fn binary(left: Self, operator: BinaryOp, right: Self) -> Self {
         Self::Binary {
             left_expr: Box::new(left),
             operator,
@@ -96,7 +99,13 @@ impl Expr {
     pub fn grouping(expr: Self) -> Self {
         Self::Grouping(Box::new(expr))
     }
-    pub fn unary(operator: Token, right: Self) -> Self {
-        Self::Unary(operator, Box::new(right))
+    pub fn unary(operator: UnaryOp, right: Self) -> Self {
+        Self::Unary {
+            operator,
+            expr: Box::new(right),
+        }
+    }
+    pub fn boxed(self) -> Box<Self> {
+        Box::new(self)
     }
 }

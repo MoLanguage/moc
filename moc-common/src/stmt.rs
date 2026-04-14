@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::{BinaryOp, CodeBlock, expr::{Expr, TypeExpr}};
+use crate::{CodeBlock, expr::{Expr, TypeExpr}, op::BinaryOp};
 
 #[derive(Clone, Debug, Serialize)]
 pub enum Stmt {

@@ -3,7 +3,7 @@ use std::str::Chars;
 use itertools::{PeekNth, peek_nth};
 use log::debug;
 use moc_common::error::{LexerError, LexerResult};
-use moc_common::token::{NumberLiteralType, Token, TokenKind};
+use moc_common::token::{NumberLiteralKind, Token, TokenKind};
 use moc_common::{CodeLocation, CodeSpan};
 
 #[derive(Clone)]
@@ -332,17 +332,17 @@ impl<'a> Lexer<'a> {
                 'x' => {
                     return Some(self.lex_non_decimal_literal_value(
                         num,
-                        NumberLiteralType::HexadecimalInteger,
+                        NumberLiteralKind::HexadecimalInteger,
                     ));
                 }
                 'o' => {
                     return Some(
-                        self.lex_non_decimal_literal_value(num, NumberLiteralType::OctalInteger),
+                        self.lex_non_decimal_literal_value(num, NumberLiteralKind::OctalInteger),
                     );
                 }
                 'b' => {
                     return Some(
-                        self.lex_non_decimal_literal_value(num, NumberLiteralType::BinaryInteger),
+                        self.lex_non_decimal_literal_value(num, NumberLiteralKind::BinaryInteger),
                     );
                 }
                 '.' => return None,
@@ -364,7 +364,7 @@ impl<'a> Lexer<'a> {
     fn lex_non_decimal_literal_value(
         &mut self,
         num: &mut String,
-        literal_type: NumberLiteralType,
+        literal_type: NumberLiteralKind,
     ) -> LexerResult {
         self.advance_n(2);
         let mut first = true;

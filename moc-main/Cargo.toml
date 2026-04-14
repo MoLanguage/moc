@@ -7,3 +7,4 @@ edition = "2024"
 moc-parser ={ path = "../moc-parser"}
 moc-common = { path = "../moc-common"}
 log = "0.4.29"
+ron = "0.12.1"

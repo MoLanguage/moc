@@ -1,7 +1,11 @@
 use std::{fs::File, io::Read, path::Path};
 
 use moc_common::{ast::Ast, error::CompilerError, token::Token};
-use moc_parser::{lexer::Lexer, parser::RecursiveDescentParser};
+use moc_parser::{
+    lexer::Lexer,
+    parser::Parser,
+};
+use ron::ser::PrettyConfig;
 
 pub struct CompileResultData {
     pub tokens: Option<Vec<Token>>,
@@ -11,7 +15,11 @@ pub struct CompileResultData {
 
 impl CompileResultData {
     pub fn new() -> Self {
-        Self { tokens: None, ast: None, errors: Vec::new() }
+        Self {
+            tokens: None,
+            ast: None,
+            errors: Vec::new(),
+        }
     }
 }
 
@@ -43,7 +51,8 @@ pub fn compile_file(path: impl AsRef<Path>, options: CompilerOptions) -> Compile
                         meta_data.tokens = Some(tokens.clone());
                     }
                     println!("Parsing now");
-                    let parser = RecursiveDescentParser::new(tokens);
+                    let pratt_parser = true;
+                    let parser = Parser::new(tokens, pratt_parser);
                     match parser.parse() {
                         Ok(ast) => {
                             println!("Done parsing");
@@ -51,10 +60,12 @@ pub fn compile_file(path: impl AsRef<Path>, options: CompilerOptions) -> Compile
                                 meta_data.ast = Some(ast.clone());
                             }
                             // TODO: continue into semantic analysis
-                        },
-                        Err(err) => { meta_data.errors.push(CompilerError::ParserError(err)); }
+                        }
+                        Err(err) => {
+                            meta_data.errors.push(CompilerError::ParserError(err));
+                        }
                     }
-                },
+                }
                 Err(lexer_err) => meta_data.errors.push(CompilerError::LexerError(lexer_err)),
             }
         }

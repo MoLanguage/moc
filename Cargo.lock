@@ -280,6 +280,7 @@ dependencies = [
  "log",
  "moc-common",
  "moc-parser",
+ "ron",
 ]
 
 [[package]]

@@ -3,63 +3,120 @@ use std::{iter::Peekable, vec::IntoIter};
 use itertools::{PeekNth, peek_nth};
 use log::debug;
 use moc_common::{
-    BinaryOp, CodeBlock, ModulePath, TypedVar, ast::Ast, decl::Decl, error::{ExprParseResult, ParseResult, ParserError}, expr::{DotExpr, Expr, FnCall, Ident, TypeExpr}, stmt::Stmt, token::{Token, TokenKind}
+    CodeBlock, ModulePath, TypedVar,
+    ast::Ast,
+    decl::Decl,
+    error::{ExprParseResult, ParseResult, ParserError},
+    expr::{DotExpr, Expr, FnCall, Ident, TypeExpr},
+    op::{BinaryOp, UnaryOp},
+    stmt::Stmt,
+    token::{Token, TokenKind},
 };
 
-pub struct PrattParser {
-    token_stream: Peekable<IntoIter<Token>>,
-    current_token: Option<Token>,
-    ast: Ast,
-}
-
-impl PrattParser {
-    pub fn new(tokens: Vec<Token>) -> Self {
-        Self {
-            token_stream: tokens.into_iter().peekable(),
-            current_token: None,
-            ast: Ast::new(),
-        }
-    }
-    
-    pub fn parse(mut self) -> Ast {
-        
-        // do the pratting and the parsin yknowhaddimsayn
-        let expr = self.expr();
-        self.ast
-    }
-    
-    fn expr(&mut self) -> BinaryOp {
-        let token = self.token_stream.peek();
-        if let Some(token) = token {
-            if let Ok(op) = token.try_into() {
-                return op;
-            }
-        }
-    }
-    
-    // we start getting back into coding by parsing simple binary exprs
-}
-
-pub struct RecursiveDescentParser {
+pub struct Parser {
     token_stream: PeekNth<IntoIter<Token>>,
     current_token: Option<Token>,
     ast: Ast,
+    is_pratt: bool, // if false uses recursive descent for expr parsing
 }
 
-impl RecursiveDescentParser {
-    pub fn new(tokens: Vec<Token>) -> Self {
+impl Parser {
+    pub fn new(tokens: Vec<Token>, is_pratt: bool) -> Self {
         let parser = Self {
             token_stream: peek_nth(tokens),
             current_token: None,
             ast: Ast::new(),
+            is_pratt,
         };
         parser
     }
 
     pub fn parse(mut self) -> ParseResult {
-        (&mut self).parse_top_level_decls()?;
+        if self.is_pratt {
+            let expr = self.expr(0)?;
+            self.ast.push(Decl::LooseExpr(expr));
+        } else {
+            (&mut self).parse_top_level_decls()?;
+        }
         Ok(self.ast)
     }
+    
+    // PRATT PARSING >>>
+    fn parse_prefix(&mut self) -> ExprParseResult {
+        let token = self.advance().unwrap();
+        use TokenKind::*;
+        match token.kind {
+            DecimalIntegerNumberLiteral
+            | DecimalPointNumberLiteral
+            | BinaryIntegerNumberLiteral
+            | OctalIntegerNumberLiteral
+            | HexadecimalIntegerNumberLiteral => Ok(Expr::NumberLiteral(
+                token.unwrap_value(),
+                token.kind.try_into().unwrap(),
+            )),
+            Ident => Ok(Expr::Variable {
+                ident: moc_common::expr::Ident::Simple(token.unwrap_value()), // FIXME: could be FnCall or module identifier
+            }),
+            Minus | Excl | Tilde => {
+                let operator = UnaryOp::try_from(token.kind).unwrap();
+                let bp = operator.prefix_binding_power();
+
+                // We call expr recursively to get what this operator applies to
+                let right = self.expr(bp)?;
+                Ok(Expr::Unary {
+                    operator,
+                    expr: Box::new(right),
+                })
+            }
+            OpenParen => {
+                let inner = self.expr(0)?;
+                self.try_consume_token(CloseParen, "Expected ')'")?;
+                Ok(Expr::grouping(inner))
+            }
+            _ => Err(ParserError::new(
+                "Expected an expression",
+                self.peek().cloned(),
+            )),
+        }
+    }
+
+    fn expr(&mut self, min_bp: u8) -> ExprParseResult {
+        // 2 + 2 * 3
+        // * (3,4) // higher precedence means the (sub)expression is evaluated before the lower precedence operators. That means it's nested deeper in the AST. 
+        // + (1,2)
+        let mut left = self.parse_prefix()?; // handles literals, (groups), and prefix ! - *
+
+        loop {
+            let op_token = match self.peek() {
+                Some(t) => t.clone(),
+                None => break,
+            };
+
+            // Try to turn the token into a BinaryOp
+            let op = match BinaryOp::try_from(op_token.kind) {
+                Ok(op) => op,
+                Err(_) => break, // Not a binary operator, we're done with this sub-expression
+            };
+
+            let (l_bp, r_bp) = op.infix_binding_power();
+            if l_bp < min_bp {
+                break;
+            }
+
+            self.advance(); // consume the operator
+            let right = self.expr(r_bp)?;
+
+            left = Expr::Binary {
+                left_expr: Box::new(left),
+                operator: op,
+                right_expr: Box::new(right),
+            };
+        }
+
+        Ok(left)
+    }
+    
+    // <<< PRATT PARSING END
 
     /// Parses the top level declarations within .mo files that declare items.
     fn parse_top_level_decls(&mut self) -> Result<(), ParserError> {
@@ -162,7 +219,7 @@ impl RecursiveDescentParser {
             return_type = Some(type_expr);
         }
         // Parse body / code
-        self.skip(TokenKind::LineBreak);
+        self.skip_tokens(TokenKind::LineBreak);
         let body = self.parse_code_block()?;
         let fn_decl = Decl::Fn {
             ident: fn_ident,
@@ -177,18 +234,18 @@ impl RecursiveDescentParser {
         debug!("parsing code block");
         self.try_consume_token(TokenKind::OpenBrace, "Expected open brace")?;
 
-        self.skip(TokenKind::LineBreak); // move on if there's a linebreak.
+        self.skip_tokens(TokenKind::LineBreak); // move on if there's a linebreak.
 
         let mut code_block = CodeBlock::new();
         loop {
             if self.matches_advance(TokenKind::CloseBrace) {
-                self.skip(TokenKind::LineBreak);
+                self.skip_tokens(TokenKind::LineBreak);
                 debug!("matched closebrace, returning codeblock");
                 return Ok(code_block);
             }
             let stmt = self.parse_stmt()?;
             code_block.stmts.push(stmt);
-            self.skip(TokenKind::LineBreak);
+            self.skip_tokens(TokenKind::LineBreak);
         }
     }
 
@@ -259,8 +316,10 @@ impl RecursiveDescentParser {
     a := 10       | DeclAssignmt (no type identifier. type to be inferred)
     a i32         | Decl
      */
+    //TODO: Rework without multi lookaheads
     fn parse_var_decl(&mut self) -> Result<Option<Stmt>, ParserError> {
-        if self.matches_in_row(&[TokenKind::Ident, TokenKind::DeclareAssign]) {
+        use TokenKind::*;
+        if self.matches_in_row(&[Ident, DeclareAssign]) {
             // type inferred declaration
             self.advance();
             let ident = self.unwrap_current_token().unwrap_value();
@@ -274,7 +333,7 @@ impl RecursiveDescentParser {
         }
 
         // Declaration with simple type
-        if self.matches_in_row(&[TokenKind::Ident, TokenKind::Ident, TokenKind::DeclareAssign]) {
+        if self.matches_in_row(&[Ident, Ident, DeclareAssign]) {
             self.advance();
             let ident = self.unwrap_current_token().unwrap_value();
 
@@ -290,15 +349,13 @@ impl RecursiveDescentParser {
             }));
         }
         // Declaration with pointer type or array type
-        if self.matches_in_row(&[TokenKind::Ident, TokenKind::Star])
-            || self.matches_in_row(&[TokenKind::Ident, TokenKind::OpenBrack])
-        {
+        if self.matches_in_row(&[Ident, Star]) || self.matches_in_row(&[Ident, OpenBrack]) {
             self.advance();
             let ident = self.unwrap_current_token().unwrap_value();
 
             let type_expr = self.parse_type_expr()?;
 
-            self.try_consume_token(TokenKind::DeclareAssign, "Expected ':='")?;
+            self.try_consume_token(DeclareAssign, "Expected ':='")?;
 
             let value = self.parse_expression()?;
             return Ok(Some(Stmt::LocalVarDeclAssign {
@@ -473,11 +530,11 @@ impl RecursiveDescentParser {
         self.advance();
         self.try_consume_token(TokenKind::Ident, "Expected struct identifier")?;
         let struct_ident = self.unwrap_current_token().unwrap_value();
-        self.skip(TokenKind::LineBreak);
+        self.skip_tokens(TokenKind::LineBreak);
         self.try_consume_token(TokenKind::OpenBrace, "Expected open brace")?;
         let mut fields = Vec::new();
         loop {
-            self.skip(TokenKind::LineBreak);
+            self.skip_tokens(TokenKind::LineBreak);
             if self.matches_advance(TokenKind::CloseBrace) {
                 break; // Struct without fields
             }
@@ -488,7 +545,7 @@ impl RecursiveDescentParser {
             fields.push(TypedVar::new(var_ident, type_expr));
             if !self
                 .peek()
-                .is_some_and(|t| t.is_of_type(TokenKind::CloseBrace))
+                .is_some_and(|t| t.is_of_kind(TokenKind::CloseBrace))
             {
                 // If next isn't token CloseBrace, means we are expecting next struct field declaration
                 self.try_consume_token2(
@@ -507,6 +564,7 @@ impl RecursiveDescentParser {
 
     fn parse_expression(&mut self) -> ExprParseResult {
         debug!("parsing expression {}", self.parser_state_dbg_info());
+
         self.parse_equality_expr()
     }
 
@@ -517,8 +575,8 @@ impl RecursiveDescentParser {
 
         let mut expr = self.parse_comparison_expr()?;
         while self.matches_any_advance(&[TokenKind::ExclEquals, TokenKind::DoubleEquals]) {
-            let operator = self.unwrap_current_token();
-            println!("equality expr: chosen operator {}", operator.kind);
+            let operator: BinaryOp = self.unwrap_current_token().kind.try_into().unwrap();
+            println!("equality expr: chosen operator {}", operator);
             let right = self.parse_comparison_expr()?;
             expr = Expr::binary(expr, operator, right);
         }
@@ -541,12 +599,9 @@ impl RecursiveDescentParser {
             TokenKind::LessOrEqual,
         ];
         while self.matches_any_advance(tokens.as_slice()) {
-            let operator = self
-                .current_token
-                .clone()
-                .expect("Operator should be here.");
+            let operator = self.unwrap_current_token().kind.try_into().unwrap();
             let right = self.parse_term_expr()?;
-            expr = Expr::binary(expr, operator, right);
+            expr = Expr::binary(expr, operator, right); // NEXT UP: Fix these errors. Make compile. Then build basic pratt expression parser
         }
         Ok(expr)
     }
@@ -563,10 +618,7 @@ impl RecursiveDescentParser {
         );
         let mut expr = self.parse_factor_and_bitwise_expr()?;
         while self.matches_any_advance(&[TokenKind::Minus, TokenKind::Plus]) {
-            let operator = self
-                .current_token
-                .clone()
-                .expect("Operator should be here.");
+            let operator = self.unwrap_current_token().kind.try_into().unwrap();
             let right = self.parse_factor_and_bitwise_expr()?;
             expr = Expr::binary(expr, operator, right)
         }
@@ -595,10 +647,7 @@ impl RecursiveDescentParser {
             TokenKind::Caret,
             TokenKind::Pipe,
         ]) {
-            let operator = self
-                .current_token
-                .clone()
-                .expect("Operator should be here.");
+            let operator = self.unwrap_current_token().kind.try_into().unwrap();
             let right = self.parse_unary_expr()?;
             println!("Ok, returning binary factor expr");
             expr = Expr::binary(expr, operator, right)
@@ -607,10 +656,10 @@ impl RecursiveDescentParser {
     }
 
     // Parsing:
-    // (! | - | & | *)?<expr>
+    // (! | - | ~ | & | *)?<expr>
     //
     // # Examples:
-    // !a   -a   &a   *a
+    // !a   -a   ~a   &a   *a
     fn parse_unary_expr(&mut self) -> ExprParseResult {
         debug!("parsing unary expr {}", self.parser_state_dbg_info());
         if self.matches_any_advance(&[
@@ -620,9 +669,10 @@ impl RecursiveDescentParser {
             TokenKind::Star,
         ]) {
             let operator = self
-                .current_token
-                .clone()
-                .expect("Operator should be here.");
+                .unwrap_current_token()
+                .kind
+                .try_into()
+                .expect("operator should be here");
             let right = self.parse_dot_expr()?;
             println!("Ok, returning unary expr");
             return Ok(Expr::unary(operator, right));
@@ -643,7 +693,7 @@ impl RecursiveDescentParser {
 
                 Ident::WithModulePrefix(module_path_prefix, ident)
             }
-            _ => panic!("Given token needs to be of type ModIdent or Ident"),
+            _ => panic!("Given token needs to be of type ModulePath or Ident"),
         };
     }
 
@@ -766,7 +816,7 @@ impl RecursiveDescentParser {
     }
 
     #[track_caller]
-    fn advance(&mut self) {
+    fn advance(&mut self) -> Option<Token> {
         self.current_token = self.token_stream.next();
 
         // Debug info:
@@ -780,6 +830,7 @@ impl RecursiveDescentParser {
                 );
             }
         }
+        return self.current_token()
     }
 
     /// Advances n times.
@@ -790,11 +841,11 @@ impl RecursiveDescentParser {
         }
     }
 
-    /// Skips tokens that are of the same type as given.
-    fn skip(&mut self, token_type: TokenKind) {
+    /// Skips tokens that are of the same kind as given.
+    fn skip_tokens(&mut self, token_kind: TokenKind) {
         loop {
             if let Some(token) = self.peek() {
-                if token.is_of_type(token_type) {
+                if token.is_of_kind(token_kind) {
                     let token = token.clone();
                     self.advance();
                     debug!("Skipped token: {}", token);
@@ -807,12 +858,12 @@ impl RecursiveDescentParser {
         }
     }
 
-    /// Skips tokens that are of any of the types given.
+    /// Skips tokens that are of any of the kinds given.
     #[allow(dead_code)]
-    fn skip_any(&mut self, token_types: &[TokenKind]) {
+    fn skip_tokens_of_any_kinds(&mut self, token_kinds: &[TokenKind]) {
         loop {
             if let Some(token) = self.peek() {
-                if token.is_of_types(token_types) {
+                if token.is_of_any_kinds(token_kinds) {
                     debug!("Peeking token: {}, skipping", token);
                     self.advance();
                 } else {
@@ -884,7 +935,7 @@ impl RecursiveDescentParser {
     #[allow(dead_code)]
     fn matches_predicate<P>(&mut self, predicate: P) -> bool
     where
-        P: FnOnce(&mut RecursiveDescentParser) -> bool,
+        P: FnOnce(&mut Parser) -> bool,
     {
         if predicate(self) {
             self.advance();
@@ -922,7 +973,7 @@ impl RecursiveDescentParser {
         Err(ParserError::new(msg, self.peek().cloned()))
     }
 
-    // if next token is of any of given types, advances. If not, return an error with given message.
+    /// If next token is of any of given types, advances. If not, return an error with given message.
     fn try_consume_token2(&mut self, tokens: &[TokenKind], msg: &str) -> Result<(), ParserError> {
         if self.is_next_of_types(tokens) {
             self.advance();

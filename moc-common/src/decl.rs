@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::{CodeBlock, ModulePath, TypedVar, expr::TypeExpr};
+use crate::{CodeBlock, ModulePath, TypedVar, expr::{Expr, TypeExpr}};
 
 #[derive(Debug, Clone, Serialize)]
 pub enum Decl {
@@ -19,4 +19,7 @@ pub enum Decl {
         ident: String,
         fields: Vec<TypedVar>,
     }, // variable?
+    
+    // Only for debugging stuff! If I want to just test parsing expressions without all the other shebang.
+    LooseExpr(Expr)
 }
