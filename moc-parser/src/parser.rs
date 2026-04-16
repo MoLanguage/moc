@@ -1,4 +1,4 @@
-use std::{iter::Peekable, vec::IntoIter};
+use std::vec::IntoIter;
 
 use itertools::{PeekNth, peek_nth};
 use log::debug;
@@ -40,7 +40,7 @@ impl Parser {
         }
         Ok(self.ast)
     }
-    
+
     // PRATT PARSING >>>
     fn parse_prefix(&mut self) -> ExprParseResult {
         let token = self.advance().unwrap();
@@ -54,9 +54,12 @@ impl Parser {
                 token.unwrap_value(),
                 token.kind.try_into().unwrap(),
             )),
-            Ident => Ok(Expr::Variable {
-                ident: moc_common::expr::Ident::Simple(token.unwrap_value()), // FIXME: could be FnCall or module identifier
-            }),
+            Ident | ModulePath => {
+                let ident = self.ident_token_to_ident();
+                Ok(Expr::Variable {
+                    ident, // FIXME: could be FnCall or module identifier
+                })
+            }
             Minus | Excl | Tilde => {
                 let operator = UnaryOp::try_from(token.kind).unwrap();
                 let bp = operator.prefix_binding_power();
@@ -68,6 +71,9 @@ impl Parser {
                     expr: Box::new(right),
                 })
             }
+            True => Ok(Expr::BoolLiteral(true)),
+            False => Ok(Expr::BoolLiteral(false)),
+            StringLiteral => Ok(Expr::StringLiteral(token.unwrap_value())),
             OpenParen => {
                 let inner = self.expr(0)?;
                 self.try_consume_token(CloseParen, "Expected ')'")?;
@@ -82,7 +88,7 @@ impl Parser {
 
     fn expr(&mut self, min_bp: u8) -> ExprParseResult {
         // 2 + 2 * 3
-        // * (3,4) // higher precedence means the (sub)expression is evaluated before the lower precedence operators. That means it's nested deeper in the AST. 
+        // * (3,4) // higher precedence means the (sub)expression is evaluated before the lower precedence operators. That means it's nested deeper in the AST.
         // + (1,2)
         let mut left = self.parse_prefix()?; // handles literals, (groups), and prefix ! - *
 
@@ -91,6 +97,51 @@ impl Parser {
                 Some(t) => t.clone(),
                 None => break,
             };
+
+            // postfix operator "function call"
+            // a simple function call like print() can be seen like this: print is the variable of type function and '()' is a special operator that calls a function. '()' can also contain args like this '(args)'
+            if op_token.kind == TokenKind::OpenParen {
+                let (l_bp, _) = (110, 0);
+                if l_bp < min_bp {
+                    break;
+                }
+
+                self.advance(); // consume '('
+
+                let args = self.parse_fn_call_args()?;
+                left = Expr::FnCall(FnCall {
+                    callee: Box::new(left),
+                    args,
+                });
+                continue;
+            }
+
+            if op_token.kind == TokenKind::Dot {
+                let (l_bp, _) = (120, 0);
+                if l_bp < min_bp {
+                    break;
+                }
+                self.advance(); // consume '.'
+
+                // <expr>.*
+                if self.matches_advance(TokenKind::Star) {
+                    left = Expr::Unary {
+                        operator: UnaryOp::Deref,
+                        expr: Box::new(left),
+                    };
+                    continue;
+                }
+
+                self.try_consume_token2(
+                    &[TokenKind::Ident, TokenKind::ModulePath],
+                    "Expected identifier or '*' after '.'",
+                )?;
+                let member_ident = self.ident_token_to_ident();
+                left = Expr::FieldAccess {
+                    called_on: Box::new(left),
+                    member_ident,
+                };
+            }
 
             // Try to turn the token into a BinaryOp
             let op = match BinaryOp::try_from(op_token.kind) {
@@ -115,7 +166,7 @@ impl Parser {
 
         Ok(left)
     }
-    
+
     // <<< PRATT PARSING END
 
     /// Parses the top level declarations within .mo files that declare items.
@@ -367,6 +418,7 @@ impl Parser {
         Ok(None)
     }
 
+    // like '[1,2,3,4,5,6,7,8]'
     fn parse_array_literal(&mut self) -> Result<Expr, ParserError> {
         let mut elements = Vec::new();
         if !self.matches_advance(TokenKind::CloseBrack) {
@@ -405,6 +457,7 @@ impl Parser {
     }
 
     fn parse_type_expr(&mut self) -> Result<TypeExpr, ParserError> {
+        // array type
         let mut array_length = None;
         if self.matches_advance(TokenKind::OpenBrack) {
             if self.matches_any_advance(&[TokenKind::DecimalIntegerNumberLiteral]) {
@@ -422,9 +475,13 @@ impl Parser {
                 type_expr: Box::new(self.parse_type_expr()?),
             });
         }
+
+        // pointer type
         if self.matches_advance(TokenKind::Star) {
             return Ok(TypeExpr::pointer(self.parse_type_expr()?));
         }
+
+        // identifier with optional module path prefix
         if self.matches_any_advance(&[TokenKind::Ident, TokenKind::ModulePath]) {
             return Ok(TypeExpr::Ident(self.ident_token_to_ident()));
         }
@@ -439,7 +496,31 @@ impl Parser {
         )
     }
 
+    fn parse_fn_call_args(&mut self) -> Result<Vec<Expr>, ParserError> {
+        // parse arguments
+        let mut args = Vec::new();
+
+        if !self.matches_advance(TokenKind::CloseParen) {
+            loop {
+                let expr = self.parse_expression()?;
+                args.push(expr);
+                if self.matches_advance(TokenKind::CloseParen) {
+                    break;
+                }
+                if self.matches_advance(TokenKind::Comma) {
+                    continue;
+                }
+                return ParserError::new(
+                    "Expected argument delimiter ',' or closed parenthesis ')'",
+                    self.peek().cloned(),
+                )
+                .wrap();
+            }
+        }
+        Ok(args)
+    }
     // when this is called, the current token is the function identifier
+    #[deprecated]
     fn parse_fn_call(&mut self, ident: Ident) -> Result<FnCall, ParserError> {
         // parse arguments
         let mut args = Vec::new();
@@ -461,7 +542,10 @@ impl Parser {
                 .wrap();
             }
         }
-        let fn_call = FnCall { ident, args };
+        let fn_call = FnCall {
+            callee: Box::new(Expr::Variable { ident }),
+            args,
+        };
         Ok(fn_call)
     }
 
@@ -564,12 +648,18 @@ impl Parser {
 
     fn parse_expression(&mut self) -> ExprParseResult {
         debug!("parsing expression {}", self.parser_state_dbg_info());
-
-        self.parse_equality_expr()
+        if self.is_pratt {
+            self.expr(0)
+        } else {
+            self.parse_equality_expr()
+        }
     }
+
+    // :Recursive Descent Expressions
 
     // a != b   a == b
     // <expr> (( != | == ) <expr>)*
+    #[deprecated]
     fn parse_equality_expr(&mut self) -> ExprParseResult {
         debug!("parsing equality expr {}", self.parser_state_dbg_info());
 
@@ -588,6 +678,7 @@ impl Parser {
     //
     // # Examples:
     // a > b   a >= b   a < b   a <= b
+    #[deprecated]
     fn parse_comparison_expr(&mut self) -> ExprParseResult {
         debug!("parsing comparison expr {}", self.parser_state_dbg_info());
 
@@ -611,6 +702,7 @@ impl Parser {
     //
     // # Examples:
     // a - b   a + b
+    #[deprecated]
     fn parse_term_expr(&mut self) -> ExprParseResult {
         debug!(
             "parsing term expression (- +) {}",
@@ -630,6 +722,7 @@ impl Parser {
     //
     // # Examples:
     // a / b   a * b   a % b   a & b   a ~ b   a << b   a >> b   a ^ b   a | b
+    #[deprecated]
     fn parse_factor_and_bitwise_expr(&mut self) -> ExprParseResult {
         debug!(
             "Parsing factor expr (/ * %) {}",
@@ -656,18 +749,14 @@ impl Parser {
     }
 
     // Parsing:
-    // (! | - | ~ | & | *)?<expr>
+    // (! | - | ~ | &)?<expr>
     //
     // # Examples:
     // !a   -a   ~a   &a   *a
+    #[deprecated]
     fn parse_unary_expr(&mut self) -> ExprParseResult {
         debug!("parsing unary expr {}", self.parser_state_dbg_info());
-        if self.matches_any_advance(&[
-            TokenKind::Excl,
-            TokenKind::Minus,
-            TokenKind::Ampersand,
-            TokenKind::Star,
-        ]) {
+        if self.matches_any_advance(&[TokenKind::Excl, TokenKind::Minus, TokenKind::Ampersand]) {
             let operator = self
                 .unwrap_current_token()
                 .kind
@@ -680,7 +769,8 @@ impl Parser {
         self.parse_dot_expr()
     }
 
-    /// Tries to convert the current Ident/ModIdent token into an Ident
+    /// Tries to convert the current Ident/ModulePath token into an Ident
+    /// Panics: If current token is not of kind Ident or ModulePath
     #[inline]
     fn ident_token_to_ident(&self) -> Ident {
         let token = self.unwrap_current_token();
@@ -702,6 +792,7 @@ impl Parser {
     //
     // Examples:
     // a.b().c() | a.b.c() | a.b.c(args) etc.
+    #[deprecated]
     fn parse_dot_expr(&mut self) -> ExprParseResult {
         // start from the base (primary expression)
         let mut expr = self.parse_primary_expr()?;
@@ -721,18 +812,10 @@ impl Parser {
                     fn_call,
                 });
             } else {
-                if let Ident::Simple(ident) = ident {
-                    expr = Expr::DotExpr(DotExpr::FieldAccess {
-                        called_on: Box::new(expr),
-                        field_ident: ident,
-                    });
-                } else {
-                    return ParserError::new(
-                        "Unexpected module identifier on struct field access",
-                        self.peek().cloned(),
-                    )
-                    .wrap();
-                }
+                expr = Expr::DotExpr(DotExpr::FieldAccess {
+                    called_on: Box::new(expr),
+                    member_ident: ident,
+                });
             }
         }
 
@@ -741,6 +824,7 @@ impl Parser {
 
     // Parsing:
     // Literals, variables and function calls
+    #[deprecated]
     fn parse_primary_expr(&mut self) -> ExprParseResult {
         debug!("parsing primary expr {}", self.parser_state_dbg_info());
 
@@ -830,7 +914,7 @@ impl Parser {
                 );
             }
         }
-        return self.current_token()
+        return self.current_token();
     }
 
     /// Advances n times.
@@ -909,6 +993,8 @@ impl Parser {
         false
     }
 
+    #[allow(dead_code)]
+    #[track_caller]
     fn matches(&mut self, token: TokenKind) -> bool {
         debug!("{}", std::panic::Location::caller());
         if self.is_next_of_type(token) {

@@ -99,7 +99,7 @@ impl ModulePath {
             .split_terminator(":")
             .map(|path_dir| path_dir.to_string())
             .collect();
-        path.remove(path.len() - 1);
+        path.pop_back();
         ModulePath { path }
     }
     pub fn from_string(ident: &str) -> Self {
@@ -111,8 +111,7 @@ impl ModulePath {
     }
 
     pub fn remove_and_get_last_path(&mut self) -> String {
-        // Safety: If we check the length of the array it should always yield an element. Therefore the unchecked unwrap shouldn't fail ;)
-        let suffix  = unsafe { self.path.remove(self.path.len() - 1).unwrap_unchecked() };
+        let suffix = self.path.pop_back().expect("ModulePath should not be empty.");
         suffix
     }
 }

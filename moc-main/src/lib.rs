@@ -5,7 +5,6 @@ use moc_parser::{
     lexer::Lexer,
     parser::Parser,
 };
-use ron::ser::PrettyConfig;
 
 pub struct CompileResultData {
     pub tokens: Option<Vec<Token>>,

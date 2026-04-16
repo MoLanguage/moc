@@ -415,6 +415,7 @@ impl<'a> Lexer<'a> {
             "in" => token!(self, In),
             "is" => token!(self, Is),
             "loop" => token!(self, Loop),
+            "next" => token!(self, Next), // like continue
             "ret" => token!(self, Ret),
             "struct" => token!(self, Struct),
             "sum" => token!(self, Sum),

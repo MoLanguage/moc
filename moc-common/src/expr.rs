@@ -13,7 +13,12 @@ pub enum Expr {
         ,
         right_expr: Box<Expr>,
     },
+    #[deprecated]
     DotExpr(DotExpr),
+    FieldAccess {
+        called_on: Box<Expr>,
+        member_ident: Ident,
+    },
     ArrayLiteral {
         elements: Vec<Expr>,
         type_expr: Option<TypeExpr>,
@@ -40,19 +45,22 @@ pub enum Expr {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FnCall {
-    pub ident: Ident,
+    pub callee: Box<Expr>, // callee / what value, what expression the function is being called on.
     pub args: Vec<Expr>,
-}
+}   
 
 #[derive(Debug, Clone, Serialize)]
+#[deprecated]
 pub enum DotExpr {
+    
     FnCall {
         called_on: Box<Expr>,
         fn_call: FnCall,
     },
+
     FieldAccess {
         called_on: Box<Expr>,
-        field_ident: String,
+        member_ident: Ident,
     },
 }
 

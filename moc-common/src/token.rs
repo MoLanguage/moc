@@ -57,7 +57,7 @@ pub enum TokenKind {
     BitShiftRight,       // >>
     BitShiftLeftAssign,  // <<=
     BitShiftRightAssign, // >>=
-    Break,
+    Break, // keyword
     Caret, // ^
     CloseBrace,
     CloseParen,
@@ -92,6 +92,7 @@ pub enum TokenKind {
     ModAssign,
     ModulePath,
     MultAssign,
+    Next, // keyword, like 'continue' in other languages
     ExclEquals,
     DecimalIntegerNumberLiteral,
     DecimalPointNumberLiteral,

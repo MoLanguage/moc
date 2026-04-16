@@ -11,6 +11,7 @@ pub enum UnaryOp {
     Negative, // -
     Not,      // ! Logical NOT
     BitNot,   // ~ Bitwise NOT
+    Deref,    // * Postfix deref (pointee = pointer.*)
 }
 
 #[derive(Debug)]
