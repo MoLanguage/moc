@@ -291,7 +291,7 @@ impl<'a> Lexer<'a> {
     fn lex_number(&mut self) -> LexerResult {
         let mut num = String::new();
 
-        let mut is_floating_point = false;
+        let mut has_decimal_point = false;
         let mut first_iter = true;
         while let Some(ch) = self.peek_char() {
             if first_iter && ch == '0' {
@@ -305,8 +305,8 @@ impl<'a> Lexer<'a> {
                 num.push(ch);
                 self.advance();
             } else if ch == '.' {
-                if !is_floating_point {
-                    is_floating_point = true;
+                if !has_decimal_point {
+                    has_decimal_point = true;
                     num.push(ch);
                     self.advance();
                 } else {
@@ -318,6 +318,13 @@ impl<'a> Lexer<'a> {
                 break;
             }
             first_iter = false;
+        }
+        if has_decimal_point {
+            return Ok(Token::number_literal(
+                num,
+                NumberLiteralKind::DecimalPoint,
+                (self.last_token_end, self.location).into(),
+            ));
         }
         Ok(Token::integer(
             num,
@@ -361,22 +368,26 @@ impl<'a> Lexer<'a> {
         }
         None
     }
+
     fn lex_non_decimal_literal_value(
         &mut self,
         num: &mut String,
-        literal_type: NumberLiteralKind,
+        literal_kind: NumberLiteralKind,
     ) -> LexerResult {
         self.advance_n(2);
         let mut first = true;
         while let Some(ch) = self.peek_char() {
-            if ch.is_digit(literal_type.get_radix()) {
+            if ch.is_digit(literal_kind.get_radix()) {
                 num.push(ch);
                 self.advance();
             } else if ch == '_' {
                 self.advance();
                 continue;
-            } else if ch.is_digit(16) || first { // max digit
-                return Err(LexerError::UnexpectedCharacterLexingNonDecimalNumberLiteral(self.location));
+            } else if ch.is_digit(16) || first {
+                // max digit
+                return Err(
+                    LexerError::UnexpectedCharacterLexingNonDecimalNumberLiteral(self.location),
+                );
             } else {
                 break;
             }
@@ -384,7 +395,7 @@ impl<'a> Lexer<'a> {
         }
         return Ok(Token::number_literal(
             num.clone(),
-            literal_type,
+            literal_kind,
             (self.last_token_end, self.location).into(),
         ));
     }
