@@ -9,8 +9,7 @@ pub enum Expr {
     // Expressions
     Binary {
         left_expr: Box<Expr>,
-        operator: BinaryOp
-        ,
+        operator: BinaryOp,
         right_expr: Box<Expr>,
     },
     #[deprecated]
@@ -21,10 +20,9 @@ pub enum Expr {
     },
     ArrayLiteral {
         elements: Vec<Expr>,
-        type_expr: Option<TypeExpr>,
     },
     ArrayAccessor {
-        ident: Ident,
+        array: Box<Expr>,
         index: Box<Expr>,
     },
     BoolLiteral(bool),

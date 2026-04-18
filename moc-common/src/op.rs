@@ -12,6 +12,7 @@ pub enum UnaryOp {
     Not,      // ! Logical NOT
     BitNot,   // ~ Bitwise NOT
     Deref,    // * Postfix deref (pointee = pointer.*)
+    AddressOf,// &
 }
 
 #[derive(Debug)]
@@ -25,6 +26,7 @@ impl TryFrom<TokenKind> for UnaryOp {
             TokenKind::Minus => Ok(UnaryOp::Negative),
             TokenKind::Excl => Ok(UnaryOp::Not),
             TokenKind::Tilde => Ok(UnaryOp::BitNot),
+            TokenKind::Ampersand => Ok(UnaryOp::AddressOf),
             _ => Err(TokenNotAUnaryOpError),
         }
     }

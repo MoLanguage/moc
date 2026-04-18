@@ -52,15 +52,15 @@ impl Parser {
             | OctalIntegerNumberLiteral
             | HexadecimalIntegerNumberLiteral => Ok(Expr::NumberLiteral(
                 token.unwrap_value(),
-                token.kind.try_into().unwrap(),
+                token.kind.try_into().unwrap(), // converts the TokenKind into the NumberLiteralKind. Because we know the TokenKind is a number literal, the conversion shouldn't panic.
             )),
             Ident | ModulePath => {
                 let ident = self.ident_token_to_ident();
                 Ok(Expr::Variable {
-                    ident, // FIXME: could be FnCall or module identifier
+                    ident, // could "evolve into" function call, module identifier or just stay a simple variable. 
                 })
             }
-            Minus | Excl | Tilde => {
+            Minus | Excl | Tilde | Ampersand => {
                 let operator = UnaryOp::try_from(token.kind).unwrap();
                 let bp = operator.prefix_binding_power();
 
@@ -78,6 +78,9 @@ impl Parser {
                 let inner = self.expr(0)?;
                 self.try_consume_token(CloseParen, "Expected ')'")?;
                 Ok(Expr::grouping(inner))
+            },
+            TokenKind::OpenBrack => {
+                self.parse_array_literal() 
             }
             _ => Err(ParserError::new(
                 "Expected an expression",
@@ -116,6 +119,7 @@ impl Parser {
                 continue;
             }
 
+            // infix operator "dot" / field access
             if op_token.kind == TokenKind::Dot {
                 let (l_bp, _) = (120, 0);
                 if l_bp < min_bp {
@@ -123,7 +127,8 @@ impl Parser {
                 }
                 self.advance(); // consume '.'
 
-                // <expr>.*
+                // Zig-style postfix deref operator *
+                // Example: <expr>.* 
                 if self.matches_advance(TokenKind::Star) {
                     left = Expr::Unary {
                         operator: UnaryOp::Deref,
@@ -141,6 +146,25 @@ impl Parser {
                     called_on: Box::new(left),
                     member_ident,
                 };
+            }
+            
+            if op_token.kind == TokenKind::OpenBrack {
+                let (l_bp, _) = (110, 0); // High binding power, similar to function calls
+                if l_bp < min_bp { // if min_bp <= 110 continue
+                    break;
+                }
+                
+                self.advance(); // consume '['
+                
+                let index_expr = self.expr(0)?; 
+                
+                self.try_consume_token(TokenKind::CloseBrack, "Expected ']' after array index")?;
+                
+                left = Expr::ArrayAccessor {
+                    array: Box::new(left),
+                    index: Box::new(index_expr),
+                };
+                continue;
             }
 
             // Try to turn the token into a BinaryOp
@@ -440,19 +464,8 @@ impl Parser {
                 }
             }
         }
-
-        let mut type_expr = None;
-        if self.matches_any(&[
-            TokenKind::Star,
-            TokenKind::OpenBrack,
-            TokenKind::Ident,
-            TokenKind::ModulePath,
-        ]) {
-            type_expr = Some(self.parse_type_expr()?)
-        }
         return Ok(Expr::ArrayLiteral {
             elements,
-            type_expr,
         });
     }
 
@@ -863,7 +876,7 @@ impl Parser {
                 let index = self.parse_expression()?;
                 if self.matches_advance(TokenKind::CloseBrack) {
                     return Ok(Expr::ArrayAccessor {
-                        ident,
+                        array: Box::new(Expr::Variable { ident }),
                         index: Box::new(index),
                     });
                 } else {
