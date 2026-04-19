@@ -1,19 +1,22 @@
 use serde::Serialize;
 
 use crate::{
-    ModulePath, op::{BinaryOp, UnaryOp}, token::NumberLiteralKind
+    CodeBlock, ModulePath, op::{BinaryOp, UnaryOp}, token::{NumberLiteralKind, TokenKind}
 };
 
 #[derive(Debug, Clone, Serialize)]
 pub enum Expr {
     // Expressions
+    Assign {
+        assignee: Box<Expr>,
+        operator: TokenKind, // TODO: maybe make this use it's own enum type like AssignmentOp?
+        value: Box<Expr>
+    },
     Binary {
         left_expr: Box<Expr>,
         operator: BinaryOp,
         right_expr: Box<Expr>,
     },
-    #[deprecated]
-    DotExpr(DotExpr),
     FieldAccess {
         called_on: Box<Expr>,
         member_ident: Ident,
@@ -24,6 +27,15 @@ pub enum Expr {
     ArrayAccessor {
         array: Box<Expr>,
         index: Box<Expr>,
+    },
+    ForLoop {
+        condition: Option<Box<Expr>>, // if None, is infinite loop
+        code_block: CodeBlock,
+    },
+    If {
+        condition: Box<Expr>,
+        if_block: CodeBlock,
+        else_block: Option<CodeBlock>,
     },
     BoolLiteral(bool),
     FnCall(FnCall),

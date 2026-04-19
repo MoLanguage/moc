@@ -27,18 +27,14 @@ pub enum Stmt {
         type_expr: Option<TypeExpr>,
         value: Expr,
     },
-    Break,
+    Break {
+        value: Option<Expr>
+    },
     Defer(Box<Stmt>),
     Expr(Expr), // expression statement (like function call)
-    ForLoop {
-        condition: Expr,
-        code_block: CodeBlock,
-    },
-    If {
-        condition: Expr,
-        if_block: CodeBlock,
-        else_block: Option<CodeBlock>,
-    },
+   
+    
     Ret(Option<Expr>), // return statement
     CodeBlock(CodeBlock),
+    Next,
 }

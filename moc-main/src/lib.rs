@@ -50,8 +50,8 @@ pub fn compile_file(path: impl AsRef<Path>, options: CompilerOptions) -> Compile
                         meta_data.tokens = Some(tokens.clone());
                     }
                     println!("Parsing now");
-                    let pratt_parser = true;
-                    let parser = Parser::new(tokens, pratt_parser);
+                    let only_expr = false;
+                    let parser = Parser::new(tokens, only_expr);
                     match parser.parse() {
                         Ok(ast) => {
                             println!("Done parsing");

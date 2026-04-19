@@ -1,4 +1,4 @@
-use std::vec::IntoIter;
+use std::{usize, vec::IntoIter};
 
 use itertools::{PeekNth, peek_nth};
 use log::debug;
@@ -7,7 +7,7 @@ use moc_common::{
     ast::Ast,
     decl::Decl,
     error::{ExprParseResult, ParseResult, ParserError},
-    expr::{DotExpr, Expr, FnCall, Ident, TypeExpr},
+    expr::{Expr, FnCall, Ident, TypeExpr},
     op::{BinaryOp, UnaryOp},
     stmt::Stmt,
     token::{Token, TokenKind},
@@ -17,22 +17,22 @@ pub struct Parser {
     token_stream: PeekNth<IntoIter<Token>>,
     current_token: Option<Token>,
     ast: Ast,
-    is_pratt: bool, // if false uses recursive descent for expr parsing
+    only_expr: bool, // if true only parses an expresion, if false, parses full program structure.
 }
 
 impl Parser {
-    pub fn new(tokens: Vec<Token>, is_pratt: bool) -> Self {
+    pub fn new(tokens: Vec<Token>, only_expr: bool) -> Self {
         let parser = Self {
             token_stream: peek_nth(tokens),
             current_token: None,
             ast: Ast::new(),
-            is_pratt,
+            only_expr,
         };
         parser
     }
 
     pub fn parse(mut self) -> ParseResult {
-        if self.is_pratt {
+        if self.only_expr {
             let expr = self.expr(0)?;
             self.ast.push(Decl::LooseExpr(expr));
         } else {
@@ -57,7 +57,7 @@ impl Parser {
             Ident | ModulePath => {
                 let ident = self.ident_token_to_ident();
                 Ok(Expr::Variable {
-                    ident, // could "evolve into" function call, module identifier or just stay a simple variable. 
+                    ident, // could "evolve into" function call, module identifier or just stay a simple variable.
                 })
             }
             Minus | Excl | Tilde | Ampersand => {
@@ -71,6 +71,7 @@ impl Parser {
                     expr: Box::new(right),
                 })
             }
+            For => return self.parse_for_loop(),
             True => Ok(Expr::BoolLiteral(true)),
             False => Ok(Expr::BoolLiteral(false)),
             StringLiteral => Ok(Expr::StringLiteral(token.unwrap_value())),
@@ -78,13 +79,12 @@ impl Parser {
                 let inner = self.expr(0)?;
                 self.try_consume_token(CloseParen, "Expected ')'")?;
                 Ok(Expr::grouping(inner))
-            },
-            TokenKind::OpenBrack => {
-                self.parse_array_literal() 
             }
+            OpenBrack => self.parse_array_literal(),
+            If => self.parse_if_else_expr(),
             _ => Err(ParserError::new(
                 "Expected an expression",
-                self.peek().cloned(),
+                Some(token.clone()),
             )),
         }
     }
@@ -100,92 +100,88 @@ impl Parser {
                 Some(t) => t.clone(),
                 None => break,
             };
-
-            // postfix operator "function call"
-            // a simple function call like print() can be seen like this: print is the variable of type function and '()' is a special operator that calls a function. '()' can also contain args like this '(args)'
-            if op_token.kind == TokenKind::OpenParen {
-                let (l_bp, _) = (110, 0);
-                if l_bp < min_bp {
-                    break;
-                }
-
-                self.advance(); // consume '('
-
-                let args = self.parse_fn_call_args()?;
-                left = Expr::FnCall(FnCall {
-                    callee: Box::new(left),
-                    args,
-                });
-                continue;
-            }
-
-            // infix operator "dot" / field access
-            if op_token.kind == TokenKind::Dot {
-                let (l_bp, _) = (120, 0);
-                if l_bp < min_bp {
-                    break;
-                }
-                self.advance(); // consume '.'
-
-                // Zig-style postfix deref operator *
-                // Example: <expr>.* 
-                if self.matches_advance(TokenKind::Star) {
-                    left = Expr::Unary {
-                        operator: UnaryOp::Deref,
-                        expr: Box::new(left),
-                    };
-                    continue;
-                }
-
-                self.try_consume_token2(
-                    &[TokenKind::Ident, TokenKind::ModulePath],
-                    "Expected identifier or '*' after '.'",
-                )?;
-                let member_ident = self.ident_token_to_ident();
-                left = Expr::FieldAccess {
-                    called_on: Box::new(left),
-                    member_ident,
-                };
-            }
-            
-            if op_token.kind == TokenKind::OpenBrack {
-                let (l_bp, _) = (110, 0); // High binding power, similar to function calls
-                if l_bp < min_bp { // if min_bp <= 110 continue
-                    break;
-                }
-                
-                self.advance(); // consume '['
-                
-                let index_expr = self.expr(0)?; 
-                
-                self.try_consume_token(TokenKind::CloseBrack, "Expected ']' after array index")?;
-                
-                left = Expr::ArrayAccessor {
-                    array: Box::new(left),
-                    index: Box::new(index_expr),
-                };
-                continue;
-            }
-
-            // Try to turn the token into a BinaryOp
-            let op = match BinaryOp::try_from(op_token.kind) {
-                Ok(op) => op,
-                Err(_) => break, // Not a binary operator, we're done with this sub-expression
+            let (l_bp, r_bp) = match op_token.infix_binding_power() {
+                Some(bp) => bp,
+                None => break,
             };
-
-            let (l_bp, r_bp) = op.infix_binding_power();
             if l_bp < min_bp {
                 break;
             }
 
-            self.advance(); // consume the operator
-            let right = self.expr(r_bp)?;
+            self.advance();
 
-            left = Expr::Binary {
-                left_expr: Box::new(left),
-                operator: op,
-                right_expr: Box::new(right),
-            };
+            if op_token.is_assignment_operator() {
+                let right = self.expr(r_bp)?;
+                left = Expr::Assign {
+                    assignee: Box::new(left),
+                    operator: op_token.kind,
+                    value: Box::new(right),
+                };
+                continue;
+            }
+
+            match op_token.kind {
+                TokenKind::OpenParen => {
+                    let args = self.parse_fn_call_args()?;
+                    left = Expr::FnCall(FnCall {
+                        callee: Box::new(left),
+                        args,
+                    });
+                    continue;
+                }
+                TokenKind::Dot => {
+                    // Zig-style postfix deref operator *
+                    // Example: <expr>.*
+                    if self.matches_advance(TokenKind::Star) {
+                        left = Expr::Unary {
+                            operator: UnaryOp::Deref,
+                            expr: Box::new(left),
+                        };
+                        continue;
+                    }
+
+                    self.skip_line_terminators();
+
+                    self.try_consume_token2(
+                        &[TokenKind::Ident, TokenKind::ModulePath],
+                        "Expected identifier or '*' after '.'",
+                    )?;
+                    let member_ident = self.ident_token_to_ident();
+                    left = Expr::FieldAccess {
+                        called_on: Box::new(left),
+                        member_ident,
+                    };
+                }
+                TokenKind::OpenBrack => {
+                    let index_expr = self.expr(0)?;
+
+                    self.try_consume_token(
+                        TokenKind::CloseBrack,
+                        "Expected ']' after array index",
+                    )?;
+
+                    left = Expr::ArrayAccessor {
+                        array: Box::new(left),
+                        index: Box::new(index_expr),
+                    };
+                    continue;
+                }
+                _ => {
+                    // Try to turn the token into a BinaryOp
+                    let op = BinaryOp::try_from(op_token.kind)
+                        .expect("should've been handled in infix_binding_power");
+                    // We can unwrap/expect because infix_binding_power returns None and breaks the loop before we get here.
+
+                    self.skip_line_terminators(); // allows to have binary expressions span across multiple lines
+
+                    let right = self.expr(r_bp)?;
+                    left = Expr::Binary {
+                        left_expr: Box::new(left),
+                        operator: op,
+                        right_expr: Box::new(right),
+                    };
+                }
+            }
         }
 
         Ok(left)
@@ -341,43 +337,39 @@ impl Parser {
     fn parse_stmt(&mut self) -> Result<Stmt, ParserError> {
         if let Some(token) = self.peek().cloned() {
             match token.kind {
-                TokenKind::For => return self.parse_for_loop(),
-                TokenKind::If => return self.parse_if_else_stmt(),
                 TokenKind::Ret => return self.parse_ret_stmt(),
                 TokenKind::Defer => return self.parse_defer_stmt(),
+                TokenKind::Break => return self.parse_break_stmt(),
+                TokenKind::Next => return Ok(Stmt::Next),
                 TokenKind::OpenBrace => return Ok(Stmt::CodeBlock(self.parse_code_block()?)),
-                TokenKind::Ident | TokenKind::ModulePath | TokenKind::Star => {
+                TokenKind::Ident | TokenKind::ModulePath => {
                     // Parse variable declarations
                     if let Some(var_decl) = self.parse_var_decl()? {
+                        // Make sure to consume the line break / semicolon here if needed
+                        self.skip_tokens(TokenKind::LineBreak);
                         return Ok(var_decl);
                     }
-
-                    // Parse assignments
-                    let dot_expr = self.parse_unary_expr()?; // parsing unary expr because of pointer deref operator *, maybe add seperate parsing step?
-                    if self.matches_advance(TokenKind::Equals) {
-                        let new_value = self.parse_expression()?;
-                        //self.consume_line_terminator()?; // we'll see if we need this.. keeping this commented out for now.
-                        return Ok(Stmt::Assignmt {
-                            assignee: dot_expr,
-                            new_value,
-                        });
-                    }
-                    if self.peek().is_some_and(|token| token.is_binary_op()) {
-                        // handling operator assign statements
-                        // e.g. a += 10
-                        self.advance();
-                        let operator = self.unwrap_current_token().kind.try_into().unwrap();
-                        let value = self.parse_expression()?;
-                        return Ok(Stmt::VarOperatorAssign {
-                            assignee: dot_expr,
-                            operator,
-                            value,
-                        });
-                    }
-                    return Ok(Stmt::Expr(dot_expr));
                 }
                 _ => {}
             }
+            // If it wasn't a dedicated statement or a variable declaration,
+            // it MUST be an expression statement (e.g. `foo();` or `a = 10;` or `a.b += 5;`)
+            let expr = self.parse_expression()?;
+
+            // If the next token isn't a valid terminator or the end of a block, throw an error!
+            if !self.matches_any(&[TokenKind::LineBreak, TokenKind::Semicolon])
+                && !self
+                    .peek()
+                    .is_some_and(|t| t.is_of_kind(TokenKind::CloseBrace))
+            {
+                return Err(ParserError::new(
+                    "Expected newline or ';' after expression",
+                    self.peek().cloned(),
+                ));
+            }
+
+            self.skip_line_terminators();
+            return Ok(Stmt::Expr(expr));
         }
         Err(ParserError::new(
             "Couldn't parse statement",
@@ -385,61 +377,61 @@ impl Parser {
         ))
     }
 
-    /*
-    Parses statements of this form:
-    a i32 := 10   | DeclAssignmt
-    a := 10       | DeclAssignmt (no type identifier. type to be inferred)
-    a i32         | Decl
-     */
-    //TODO: Rework without multi lookaheads
+    // Parses statements of this form:
+    // a i32 := 10   | DeclAssignmt
+    // a := 10       | DeclAssignmt (no type identifier. type to be inferred)
+    // a [3]i32 := 10| DeclAssignmt with complex type
     fn parse_var_decl(&mut self) -> Result<Option<Stmt>, ParserError> {
-        use TokenKind::*;
-        if self.matches_in_row(&[Ident, DeclareAssign]) {
-            // type inferred declaration
-            self.advance();
-            let ident = self.unwrap_current_token().unwrap_value();
-            self.advance();
-            let value = self.parse_expression()?;
-            return Ok(Some(Stmt::LocalVarDeclAssign {
-                ident,
-                type_expr: None,
-                value,
-            }));
+        // 1. Scan ahead to find out if this statement contains a ':='
+        let mut i = 0;
+        let mut is_decl = false;
+
+        loop {
+            match self.peek_nth(i) {
+                Some(token) if token.kind == TokenKind::DeclareAssign => {
+                    is_decl = true;
+                    break;
+                }
+                Some(token)
+                    if token.kind == TokenKind::LineBreak
+                        || token.kind == TokenKind::Semicolon
+                        || token.kind == TokenKind::Equals
+                        || token.kind == TokenKind::OpenBrace =>
+                {
+                    // We hit a statement boundary or an assignment, so it's not a var decl
+                    break;
+                }
+                None => break, // EOF
+                _ => i += 1,
+            }
         }
 
-        // Declaration with simple type
-        if self.matches_in_row(&[Ident, Ident, DeclareAssign]) {
-            self.advance();
-            let ident = self.unwrap_current_token().unwrap_value();
-
-            let type_expr = self.parse_type_expr()?;
-
-            self.advance(); // skip over DeclareAssign
-
-            let value = self.parse_expression()?;
-            return Ok(Some(Stmt::LocalVarDeclAssign {
-                ident,
-                type_expr: Some(type_expr),
-                value,
-            }));
+        // 2. If no ':=' was found, bail out so parse_stmt can parse it as an expression.
+        if !is_decl {
+            return Ok(None);
         }
-        // Declaration with pointer type or array type
-        if self.matches_in_row(&[Ident, Star]) || self.matches_in_row(&[Ident, OpenBrack]) {
-            self.advance();
-            let ident = self.unwrap_current_token().unwrap_value();
 
-            let type_expr = self.parse_type_expr()?;
+        // 3. We are guaranteed this is a variable declaration now!
 
-            self.try_consume_token(DeclareAssign, "Expected ':='")?;
+        // consume the variable identifier
+        let ident = self.advance().unwrap().unwrap_value();
 
-            let value = self.parse_expression()?;
-            return Ok(Some(Stmt::LocalVarDeclAssign {
-                ident,
-                type_expr: Some(type_expr),
-                value,
-            }));
+        // 4. Parse the optional type expression
+        let mut type_expr = None;
+        if !self.matches(TokenKind::DeclareAssign) {
+            // If the next token isn't ':=', there must be a type expression here
+            type_expr = Some(self.parse_type_expr()?);
         }
-        Ok(None)
+
+        // 5. Consume ':=' and parse the value
+        self.try_consume_token(TokenKind::DeclareAssign, "Expected ':='")?;
+        let value = self.parse_expression()?;
+
+        Ok(Some(Stmt::LocalVarDeclAssign {
+            ident,
+            type_expr,
+            value,
+        }))
     }
 
     // like '[1,2,3,4,5,6,7,8]'
@@ -450,26 +442,32 @@ impl Parser {
                 let element = self.parse_expression()?;
                 elements.push(element);
 
+                self.skip_line_terminators();
+
                 if self.matches_advance(TokenKind::CloseBrack) {
                     break;
                 }
                 if self.matches_advance(TokenKind::Comma) {
+                    self.skip_line_terminators();
+
+                    if self.matches_advance(TokenKind::CloseBrack) {
+                        break;
+                    }
                     continue;
-                } else {
-                    return ParserError::new(
-                        "Expected comma ',' or closed bracket ']'",
-                        self.peek().cloned(),
-                    )
-                    .wrap();
                 }
+                return ParserError::new(
+                    "Expected comma ',' or closed bracket ']'",
+                    self.peek().cloned(),
+                )
+                .wrap();
             }
         }
-        return Ok(Expr::ArrayLiteral {
-            elements,
-        });
+        return Ok(Expr::ArrayLiteral { elements });
     }
 
+    #[track_caller]
     fn parse_type_expr(&mut self) -> Result<TypeExpr, ParserError> {
+        debug!("parsing type expr from: {}", std::panic::Location::caller());
         // array type
         let mut array_length = None;
         if self.matches_advance(TokenKind::OpenBrack) {
@@ -482,7 +480,7 @@ impl Parser {
                 array_length = Some(length);
             }
 
-            self.try_consume_token(TokenKind::CloseBrack, "Expected closed bracket '['")?;
+            self.try_consume_token(TokenKind::CloseBrack, "Expected closed bracket ']'")?;
             return Ok(TypeExpr::Array {
                 length: array_length,
                 type_expr: Box::new(self.parse_type_expr()?),
@@ -517,10 +515,20 @@ impl Parser {
             loop {
                 let expr = self.parse_expression()?;
                 args.push(expr);
+
+                self.skip_line_terminators();
+
                 if self.matches_advance(TokenKind::CloseParen) {
                     break;
                 }
                 if self.matches_advance(TokenKind::Comma) {
+                    self.skip_line_terminators(); // added this
+
+                    // BONUS: Support trailing commas!
+                    // If we skipped the comma/newlines and hit a ')', we are done.
+                    if self.matches_advance(TokenKind::CloseParen) {
+                        break;
+                    }
                     continue;
                 }
                 return ParserError::new(
@@ -532,46 +540,26 @@ impl Parser {
         }
         Ok(args)
     }
-    // when this is called, the current token is the function identifier
-    #[deprecated]
-    fn parse_fn_call(&mut self, ident: Ident) -> Result<FnCall, ParserError> {
-        // parse arguments
-        let mut args = Vec::new();
-
-        if !self.matches_advance(TokenKind::CloseParen) {
-            loop {
-                let expr = self.parse_expression()?;
-                args.push(expr);
-                if self.matches_advance(TokenKind::CloseParen) {
-                    break;
-                }
-                if self.matches_advance(TokenKind::Comma) {
-                    continue;
-                }
-                return ParserError::new(
-                    "Expected argument delimiter ',' or closed parenthesis ')'",
-                    self.peek().cloned(),
-                )
-                .wrap();
-            }
-        }
-        let fn_call = FnCall {
-            callee: Box::new(Expr::Variable { ident }),
-            args,
-        };
-        Ok(fn_call)
-    }
 
     // TODO:
     // for-in loop for collections, for loop without condition (like loop keyword in Rust)
+    // TODO: Make it be an expression for break with value.
     //
     // Parsing:
-    // for <bool expr> <code block>
-    fn parse_for_loop(&mut self) -> Result<Stmt, ParserError> {
-        self.advance();
-        let condition = self.parse_expression()?;
+    // for <bool expr>? <code block>
+    fn parse_for_loop(&mut self) -> Result<Expr, ParserError> {
+        if let Some(token) = self.peek() {
+            if token.kind == TokenKind::OpenBrace {
+                let code_block = self.parse_code_block()?;
+                return Ok(Expr::ForLoop {
+                    condition: None,
+                    code_block,
+                });
+            }
+        }
+        let condition = Some(self.parse_expression()?.boxed());
         let code_block = self.parse_code_block()?;
-        let stmt = Stmt::ForLoop {
+        let stmt = Expr::ForLoop {
             condition,
             code_block,
         };
@@ -579,19 +567,16 @@ impl Parser {
     }
 
     // TODO:
-    // if is statement (like switch or match)
-    //
-    // Parsing:
-    // if <bool expr> <code block>
-    fn parse_if_else_stmt(&mut self) -> Result<Stmt, ParserError> {
-        self.advance();
-        let condition = self.parse_expression()?;
+    // if is expr (like switch or match)
+    fn parse_if_else_expr(&mut self) -> Result<Expr, ParserError> {
+        let condition = self.parse_expression()?.boxed();
         let if_block = self.parse_code_block()?;
-        let mut else_block = None;
-        if self.matches_advance(TokenKind::Else) {
-            else_block = Some(self.parse_code_block()?);
-        }
-        Ok(Stmt::If {
+        let else_block = if self.matches_advance(TokenKind::Else) {
+            Some(self.parse_code_block()?)
+        } else {
+            None
+        };
+        Ok(Expr::If {
             condition,
             if_block,
             else_block,
@@ -602,6 +587,15 @@ impl Parser {
         self.advance();
         let stmt = self.parse_stmt()?;
         Ok(Stmt::Defer(Box::new(stmt)))
+    }
+
+    fn parse_break_stmt(&mut self) -> Result<Stmt, ParserError> {
+        self.advance();
+        if self.matches_any(&[TokenKind::LineBreak, TokenKind::Semicolon]) {
+            return Ok(Stmt::Break { value: None });
+        }
+        let expr = self.parse_expression()?;
+        Ok(Stmt::Break { value: Some(expr) })
     }
 
     fn parse_ret_stmt(&mut self) -> Result<Stmt, ParserError> {
@@ -661,125 +655,7 @@ impl Parser {
 
     fn parse_expression(&mut self) -> ExprParseResult {
         debug!("parsing expression {}", self.parser_state_dbg_info());
-        if self.is_pratt {
-            self.expr(0)
-        } else {
-            self.parse_equality_expr()
-        }
-    }
-
-    // :Recursive Descent Expressions
-
-    // a != b   a == b
-    // <expr> (( != | == ) <expr>)*
-    #[deprecated]
-    fn parse_equality_expr(&mut self) -> ExprParseResult {
-        debug!("parsing equality expr {}", self.parser_state_dbg_info());
-
-        let mut expr = self.parse_comparison_expr()?;
-        while self.matches_any_advance(&[TokenKind::ExclEquals, TokenKind::DoubleEquals]) {
-            let operator: BinaryOp = self.unwrap_current_token().kind.try_into().unwrap();
-            println!("equality expr: chosen operator {}", operator);
-            let right = self.parse_comparison_expr()?;
-            expr = Expr::binary(expr, operator, right);
-        }
-        Ok(expr)
-    }
-
-    // Parsing:
-    // <expr> (( > | >= | < | <= ) <expr>)*
-    //
-    // # Examples:
-    // a > b   a >= b   a < b   a <= b
-    #[deprecated]
-    fn parse_comparison_expr(&mut self) -> ExprParseResult {
-        debug!("parsing comparison expr {}", self.parser_state_dbg_info());
-
-        let mut expr = self.parse_term_expr()?;
-        let tokens = &[
-            TokenKind::Greater,
-            TokenKind::GreaterOrEqual,
-            TokenKind::Less,
-            TokenKind::LessOrEqual,
-        ];
-        while self.matches_any_advance(tokens.as_slice()) {
-            let operator = self.unwrap_current_token().kind.try_into().unwrap();
-            let right = self.parse_term_expr()?;
-            expr = Expr::binary(expr, operator, right); // NEXT UP: Fix these errors. Make compile. Then build basic pratt expression parser
-        }
-        Ok(expr)
-    }
-
-    // Parsing:
-    // <expr> (( - | + ) <expr>)*
-    //
-    // # Examples:
-    // a - b   a + b
-    #[deprecated]
-    fn parse_term_expr(&mut self) -> ExprParseResult {
-        debug!(
-            "parsing term expression (- +) {}",
-            self.parser_state_dbg_info()
-        );
-        let mut expr = self.parse_factor_and_bitwise_expr()?;
-        while self.matches_any_advance(&[TokenKind::Minus, TokenKind::Plus]) {
-            let operator = self.unwrap_current_token().kind.try_into().unwrap();
-            let right = self.parse_factor_and_bitwise_expr()?;
-            expr = Expr::binary(expr, operator, right)
-        }
-        Ok(expr)
-    }
-
-    // Parsing:
-    // <expr> (( / | * | % | & | ~ | << | >> | ^ | '|' ) <expr>)*
-    //
-    // # Examples:
-    // a / b   a * b   a % b   a & b   a ~ b   a << b   a >> b   a ^ b   a | b
-    #[deprecated]
-    fn parse_factor_and_bitwise_expr(&mut self) -> ExprParseResult {
-        debug!(
-            "Parsing factor expr (/ * %) {}",
-            self.parser_state_dbg_info()
-        );
-        let mut expr = self.parse_unary_expr()?;
-        while self.matches_any_advance(&[
-            TokenKind::Slash,
-            TokenKind::Star,
-            TokenKind::Percent,
-            TokenKind::Ampersand,
-            TokenKind::Tilde,
-            TokenKind::BitShiftLeft,
-            TokenKind::BitShiftRight,
-            TokenKind::Caret,
-            TokenKind::Pipe,
-        ]) {
-            let operator = self.unwrap_current_token().kind.try_into().unwrap();
-            let right = self.parse_unary_expr()?;
-            println!("Ok, returning binary factor expr");
-            expr = Expr::binary(expr, operator, right)
-        }
-        Ok(expr)
-    }
-
-    // Parsing:
-    // (! | - | ~ | &)?<expr>
-    //
-    // # Examples:
-    // !a   -a   ~a   &a   *a
-    #[deprecated]
-    fn parse_unary_expr(&mut self) -> ExprParseResult {
-        debug!("parsing unary expr {}", self.parser_state_dbg_info());
-        if self.matches_any_advance(&[TokenKind::Excl, TokenKind::Minus, TokenKind::Ampersand]) {
-            let operator = self
-                .unwrap_current_token()
-                .kind
-                .try_into()
-                .expect("operator should be here");
-            let right = self.parse_dot_expr()?;
-            println!("Ok, returning unary expr");
-            return Ok(Expr::unary(operator, right));
-        }
-        self.parse_dot_expr()
+        self.expr(0)
     }
 
     /// Tries to convert the current Ident/ModulePath token into an Ident
@@ -798,105 +674,6 @@ impl Parser {
             }
             _ => panic!("Given token needs to be of type ModulePath or Ident"),
         };
-    }
-
-    // Parsing:
-    // <expr>(.<fn_call>|<field>)*
-    //
-    // Examples:
-    // a.b().c() | a.b.c() | a.b.c(args) etc.
-    #[deprecated]
-    fn parse_dot_expr(&mut self) -> ExprParseResult {
-        // start from the base (primary expression)
-        let mut expr = self.parse_primary_expr()?;
-
-        // then, while there's a '.', chain
-        while self.matches_advance(TokenKind::Dot) {
-            // we're already past the '.'
-            self.try_consume_token2(
-                &[TokenKind::Ident, TokenKind::ModulePath],
-                "Expected identifier after '.'",
-            )?;
-            let ident = self.ident_token_to_ident();
-            if self.matches_advance(TokenKind::OpenParen) {
-                let fn_call = self.parse_fn_call(ident)?;
-                expr = Expr::DotExpr(DotExpr::FnCall {
-                    called_on: Box::new(expr),
-                    fn_call,
-                });
-            } else {
-                expr = Expr::DotExpr(DotExpr::FieldAccess {
-                    called_on: Box::new(expr),
-                    member_ident: ident,
-                });
-            }
-        }
-
-        Ok(expr)
-    }
-
-    // Parsing:
-    // Literals, variables and function calls
-    #[deprecated]
-    fn parse_primary_expr(&mut self) -> ExprParseResult {
-        debug!("parsing primary expr {}", self.parser_state_dbg_info());
-
-        if self.matches_advance(TokenKind::True) {
-            debug!("Ok, returning boolean literal expr");
-            return Ok(Expr::BoolLiteral(true));
-        }
-        if self.matches_advance(TokenKind::False) {
-            debug!("Ok, returning boolean literal expr");
-            return Ok(Expr::BoolLiteral(false));
-        }
-        if self.matches_advance(TokenKind::StringLiteral) {
-            debug!("Ok, returning string literal expr");
-            return Ok(Expr::StringLiteral(
-                self.unwrap_current_token().unwrap_value(),
-            ));
-        }
-        if self.peek().is_some_and(|t| t.is_number_literal()) {
-            self.advance();
-            debug!("Ok, returning number literal expr");
-            let token = self.unwrap_current_token();
-            return Ok(Expr::NumberLiteral(
-                token.unwrap_value(),
-                token.kind.try_into().unwrap(),
-            ));
-        }
-        if self.matches_advance(TokenKind::OpenParen) {
-            let expr = self.parse_expression()?;
-            self.try_consume_token(TokenKind::CloseParen, "Expected ')' after expression.")?;
-            debug!("Ok, returning grouping expr");
-            return Ok(Expr::Grouping(Box::new(expr)));
-        }
-        if self.matches_any_advance(&[TokenKind::Ident, TokenKind::ModulePath]) {
-            let ident = self.ident_token_to_ident();
-            if self.matches_advance(TokenKind::OpenBrack) {
-                let index = self.parse_expression()?;
-                if self.matches_advance(TokenKind::CloseBrack) {
-                    return Ok(Expr::ArrayAccessor {
-                        array: Box::new(Expr::Variable { ident }),
-                        index: Box::new(index),
-                    });
-                } else {
-                    return Err(ParserError::new(
-                        "Expected closed bracket ']'",
-                        self.peek().cloned(),
-                    ));
-                }
-            }
-            if self.matches_advance(TokenKind::OpenParen) {
-                let fn_call = self.parse_fn_call(ident)?;
-                return Ok(Expr::FnCall(fn_call));
-            }
-            return Ok(Expr::Variable { ident });
-        }
-        if self.matches_advance(TokenKind::OpenBrack) {
-            return self.parse_array_literal();
-        }
-        //return Ok(Expr::Empty);
-        ParserError::new("Expected an expression", self.peek().cloned()).wrap()
     }
 
     // :Utils
@@ -957,7 +734,7 @@ impl Parser {
 
     /// Skips tokens that are of any of the kinds given.
     #[allow(dead_code)]
-    fn skip_tokens_of_any_kinds(&mut self, token_kinds: &[TokenKind]) {
+    fn skip_tokens_of_kinds(&mut self, token_kinds: &[TokenKind]) {
         loop {
             if let Some(token) = self.peek() {
                 if token.is_of_any_kinds(token_kinds) {
@@ -968,6 +745,10 @@ impl Parser {
                 }
             }
         }
+    }
+
+    fn skip_line_terminators(&mut self) {
+        self.skip_tokens_of_kinds(&[TokenKind::LineBreak, TokenKind::Semicolon]);
     }
 
     fn peek(&mut self) -> Option<&Token> {

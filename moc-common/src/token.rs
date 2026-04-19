@@ -3,8 +3,10 @@ use std::fmt::Display;
 use derive_more::Display;
 use serde::Serialize;
 
-use crate::{CodeSpan, op::{BinaryOp, UnaryOp}};
-
+use crate::{
+    CodeSpan,
+    op::{BinaryOp, UnaryOp},
+};
 
 #[macro_export]
 macro_rules! token {
@@ -57,8 +59,8 @@ pub enum TokenKind {
     BitShiftRight,       // >>
     BitShiftLeftAssign,  // <<=
     BitShiftRightAssign, // >>=
-    Break, // keyword
-    Caret, // ^
+    Break,               // keyword
+    Caret,               // ^
     CloseBrace,
     CloseParen,
     OpenBrack,
@@ -210,17 +212,23 @@ impl Token {
         self.value.as_ref().expect("Expected value").clone()
     }
 
-    pub fn is_operator_assign(&self) -> bool {
+    pub fn is_assignment_operator(&self) -> bool {
         use TokenKind::*;
         matches!(
             self.kind,
-            AddAssign
+            Equals
+                | DeclareAssign
+                | AddAssign
                 | SubAssign
                 | MultAssign
+                | ModAssign
                 | DivAssign
                 | BitAndAssign
                 | BitXorAssign
+                | BitNotAssign
                 | BitOrAssign
+                | BitShiftLeftAssign
+                | BitShiftRightAssign
         )
     }
 
@@ -247,6 +255,22 @@ impl Token {
 
     pub fn is_number_literal(&self) -> bool {
         TryInto::<NumberLiteralKind>::try_into(self.kind).is_ok()
+    }
+
+    pub fn infix_binding_power(&self) -> Option<(u8, u8)> {
+        if let Some(binary_op) = BinaryOp::try_from(self.kind).ok() {
+            return Some(binary_op.infix_binding_power());
+        }
+        use TokenKind::*;
+        match self.kind {
+            OpenParen => Some((110, 0)), // 0 on the right because it's postfix/special
+            Dot => Some((120, 0)),
+            OpenBrack => Some((110, 0)),
+            DeclareAssign | Equals | AddAssign | SubAssign | MultAssign | DivAssign | ModAssign
+            | BitAndAssign | BitOrAssign | BitNotAssign | BitXorAssign | BitShiftLeftAssign
+            | BitShiftRightAssign => Some((10, 9)), // Right-associative assignment
+            _ => None,
+        }
     }
 }
 
