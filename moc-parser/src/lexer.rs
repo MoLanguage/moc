@@ -423,6 +423,7 @@ impl<'a> Lexer<'a> {
             "fn" => token!(self, Fn),
             "for" => token!(self, For),
             "if" => token!(self, If),
+            "impl" => token!(self, Impl),
             "in" => token!(self, In),
             "is" => token!(self, Is),
             "loop" => token!(self, Loop),
@@ -431,6 +432,7 @@ impl<'a> Lexer<'a> {
             "struct" => token!(self, Struct),
             "sum" => token!(self, Sum),
             "true" => token!(self, True),
+            "trait" => token!(self, Trait),
             "use" => token!(self, Use),
             _ => {
                 if contains_colon {

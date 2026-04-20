@@ -5,9 +5,9 @@ use log::debug;
 use moc_common::{
     CodeBlock, ModulePath, TypedVar,
     ast::Ast,
-    decl::Decl,
+    decl::{Decl, FnSignature, Variant, VariantData},
     error::{ExprParseResult, ParseResult, ParserError},
-    expr::{Expr, FnCall, Ident, TypeExpr},
+    expr::{Expr, FnCall, GenericParam, Ident, TraitBound, TypeExpr},
     op::{BinaryOp, UnaryOp},
     stmt::Stmt,
     token::{Token, TokenKind},
@@ -201,9 +201,17 @@ impl Parser {
                     let struct_decl = self.parse_struct_decl()?;
                     self.ast.push(struct_decl);
                 }
+                TokenKind::Sum => {
+                    let sum_decl = self.parse_sum_decl()?;
+                    self.ast.push(sum_decl);
+                }
                 TokenKind::Fn => {
                     let fn_decl = self.parse_fn_decl()?;
                     self.ast.push(fn_decl);
+                }
+                TokenKind::Trait => {
+                    let trait_decl = self.parse_trait_decl()?;
+                    self.ast.push(trait_decl);
                 }
                 TokenKind::LineBreak => {
                     self.advance();
@@ -252,12 +260,15 @@ impl Parser {
         Ok(decl)
     }
 
-    fn parse_fn_decl(&mut self) -> Result<Decl, ParserError> {
+    fn parse_fn_signature(&mut self) -> Result<FnSignature, ParserError> {
         // Just peeked Fn token
         self.advance();
 
         self.try_consume_token(TokenKind::Ident, "Expected function identifier")?;
-        let fn_ident = self.unwrap_current_token().unwrap_value();
+        let ident = self.unwrap_current_token().unwrap_value();
+
+        let generics = self.parse_generic_params()?;
+
         self.try_consume_token(TokenKind::OpenParen, "Expected open parenthesis")?;
 
         // Parse parameters
@@ -289,15 +300,20 @@ impl Parser {
             let type_expr = self.parse_type_expr()?;
             return_type = Some(type_expr);
         }
-        // Parse body / code
-        self.skip_tokens(TokenKind::LineBreak);
-        let body = self.parse_code_block()?;
-        let fn_decl = Decl::Fn {
-            ident: fn_ident,
+        Ok(FnSignature {
+            ident,
+            generics,
             params,
             return_type,
-            body,
-        };
+        })
+    }
+
+    // fn (T) abc() ret_type { /*...*/ }
+    fn parse_fn_decl(&mut self) -> Result<Decl, ParserError> {
+        let signature = self.parse_fn_signature()?;
+        self.skip_tokens(TokenKind::LineBreak);
+        let body = self.parse_code_block()?;
+        let fn_decl = Decl::Fn { signature, body };
         Ok(fn_decl)
     }
 
@@ -320,20 +336,108 @@ impl Parser {
         }
     }
 
-    // TODO: Rework
-    //
-    // Stmts with identifier in the beginning:
-    //
-    // Variable declaration assignment
-    // foo type := expr
-    //
-    //
-    // struct_field_assignment:
-    // dot().expr().field = expr
-    //
-    // fn call stmt:
-    // calling()
-    //
+    /// Parses optional generic parameters: '[T, U]' or '[T impl Trait1 Trait2]
+    fn parse_generic_params(&mut self) -> Result<Vec<GenericParam>, ParserError> {
+        let mut generics = Vec::new();
+        // Check if there is an open paren. If not, return empty vec!
+        if self.matches_advance(TokenKind::OpenBrack) {
+            if !self.matches(TokenKind::CloseBrack) {
+                loop {
+                    self.try_consume_token(TokenKind::Ident, "Expected generic type identifier")?;
+                    let generic_ident = self.unwrap_current_token().unwrap_value();
+
+                    let mut bounds = Vec::new();
+
+                    // If we see a colon, parse the trait bounds!
+                    if self.matches_advance(TokenKind::Colon) {
+                        loop {
+                            self.try_consume_token2(
+                                &[TokenKind::Ident, TokenKind::ModulePath],
+                                "Expected trait identifier",
+                            )?;
+                            bounds.push(self.ident_token_to_ident());
+
+                            // If there's a '+', there are more bounds for this generic
+                            if self.matches_advance(TokenKind::Plus) {
+                                continue;
+                            }
+                            break; // No more '+', we are done with bounds for this generic
+                        }
+                    }
+
+                    // Add the generic_ident and its bounds to your list
+                    generics.push(GenericParam {
+                        ident: generic_ident,
+                        bounds: Some(bounds),
+                    });
+
+                    if self.matches_advance(TokenKind::CloseBrack) {
+                        break;
+                    }
+                    // Allow trailing commas!
+                    if self.matches_advance(TokenKind::Comma) {
+                        self.skip_line_terminators();
+                        if self.matches_advance(TokenKind::CloseBrack) {
+                            break;
+                        }
+                        continue;
+                    }
+                    return Err(ParserError::new(
+                        "Expected ',' or ')'",
+                        self.peek().cloned(),
+                    ));
+                }
+            }
+        }
+        Ok(generics)
+    }
+
+    /// Parses optional trait implementations: 'impl Trait1, Trait2' or 'impl Trait1[i32], Trait2[string]
+    fn parse_impl_traits(&mut self) -> Result<Vec<TraitBound>, ParserError> {
+        let mut traits = Vec::new();
+        if self.matches_advance(TokenKind::Impl) {
+            loop {
+                self.try_consume_token2(
+                    &[TokenKind::Ident, TokenKind::ModulePath],
+                    "Expected trait identifier",
+                )?;
+                let ident = self.ident_token_to_ident();
+
+                let mut args = Vec::new();
+                if self.matches_advance(TokenKind::OpenBrack) {
+                    if !self.matches_advance(TokenKind::CloseBrack) {
+                        loop {
+                            self.skip_line_terminators();
+
+                            // Trait arguments are full type expressions
+                            args.push(self.parse_type_expr()?);
+
+                            self.skip_line_terminators();
+
+                            if self.matches_advance(TokenKind::CloseBrack) {
+                                break;
+                            }
+                            if self.matches_advance(TokenKind::Comma) {
+                                continue;
+                            }
+                            return Err(ParserError::new(
+                                "Expected ',' or ']'",
+                                self.peek().cloned(),
+                            ));
+                        }
+                    }
+                }
+
+                traits.push(TraitBound { ident, args });
+                if !self.matches_advance(TokenKind::Comma) {
+                    break;
+                }
+                self.skip_line_terminators();
+            }
+        }
+        Ok(traits)
+    }
+
     fn parse_stmt(&mut self) -> Result<Stmt, ParserError> {
         if let Some(token) = self.peek().cloned() {
             match token.kind {
@@ -494,7 +598,42 @@ impl Parser {
 
         // identifier with optional module path prefix
         if self.matches_any_advance(&[TokenKind::Ident, TokenKind::ModulePath]) {
-            return Ok(TypeExpr::Ident(self.ident_token_to_ident()));
+            let base_ident = self.ident_token_to_ident();
+
+            // generic type
+            if self.matches_advance(TokenKind::OpenBrack) {
+                let mut generic_params = Vec::new();
+                if !self.matches(TokenKind::CloseBrack) {
+                    loop {
+                        self.skip_line_terminators();
+                        self.try_consume_token(
+                            TokenKind::Ident,
+                            "Expected generic type identifier",
+                        )?;
+                        generic_params.push(self.parse_type_expr()?);
+                        self.skip_line_terminators();
+
+                        if self.matches_advance(TokenKind::CloseBrack) {
+                            break;
+                        }
+                        if self.matches_advance(TokenKind::Comma) {
+                            continue;
+                        }
+                        return ParserError::new(
+                            "Expected ',' or ']' after generic type argument",
+                            self.peek().cloned(),
+                        )
+                        .wrap();
+                    }
+                }
+                return Ok(TypeExpr::Generic {
+                    ident: base_ident,
+                    params: generic_params,
+                });
+            }
+
+            // not generic, just simple ident.
+            return Ok(TypeExpr::Ident(base_ident));
         }
         ParserError::new("Expected type expression", self.peek().cloned()).wrap()
     }
@@ -524,7 +663,7 @@ impl Parser {
                 if self.matches_advance(TokenKind::Comma) {
                     self.skip_line_terminators(); // added this
 
-                    // BONUS: Support trailing commas!
+                    // trailing commas
                     // If we skipped the comma/newlines and hit a ')', we are done.
                     if self.matches_advance(TokenKind::CloseParen) {
                         break;
@@ -621,8 +760,12 @@ impl Parser {
         self.advance();
         self.try_consume_token(TokenKind::Ident, "Expected struct identifier")?;
         let struct_ident = self.unwrap_current_token().unwrap_value();
+
+        let generics = self.parse_generic_params()?;
+        let impl_traits = self.parse_impl_traits()?;
+
         self.skip_tokens(TokenKind::LineBreak);
-        self.try_consume_token(TokenKind::OpenBrace, "Expected open brace")?;
+        self.try_consume_token(TokenKind::OpenBrace, "Expected open brace or impl")?; // this error message is weird
         let mut fields = Vec::new();
         loop {
             self.skip_tokens(TokenKind::LineBreak);
@@ -648,6 +791,133 @@ impl Parser {
         Ok(Decl::Struct {
             ident: struct_ident,
             fields,
+            generics,
+            impl_traits,
+        })
+    }
+
+    fn parse_sum_decl(&mut self) -> Result<Decl, ParserError> {
+        self.advance(); // consume 'sum' (assuming TokenKind::Sum)
+
+        self.try_consume_token(TokenKind::Ident, "Expected sum type identifier")?;
+        let sum_ident = self.unwrap_current_token().unwrap_value();
+
+        let generics = self.parse_generic_params()?;
+        let impl_traits = self.parse_impl_traits()?;
+
+        self.skip_line_terminators();
+        self.try_consume_token(TokenKind::OpenBrace, "Expected '{'")?;
+
+        let mut variants = Vec::new();
+
+        loop {
+            self.skip_line_terminators();
+            if self.matches_advance(TokenKind::CloseBrace) {
+                break;
+            }
+
+            self.try_consume_token(TokenKind::Ident, "Expected variant identifier")?;
+            let variant_ident = self.unwrap_current_token().unwrap_value();
+
+            // Figure out which kind of variant this is
+            let data = if self.matches_advance(TokenKind::OpenParen) {
+                // 1. Tuple Variant
+                let mut types = Vec::new();
+                if !self.matches_advance(TokenKind::CloseParen) {
+                    loop {
+                        self.skip_line_terminators();
+                        types.push(self.parse_type_expr()?);
+                        self.skip_line_terminators();
+
+                        if self.matches_advance(TokenKind::CloseParen) {
+                            break;
+                        }
+                        self.try_consume_token(TokenKind::Comma, "Expected ',' or ')'")?;
+                    }
+                }
+                VariantData::Tuple(types)
+            } else if self.matches_advance(TokenKind::OpenBrace) {
+                // 2. Struct Variant
+                let mut fields = Vec::new();
+                loop {
+                    self.skip_line_terminators();
+                    if self.matches_advance(TokenKind::CloseBrace) {
+                        break;
+                    }
+
+                    self.try_consume_token(TokenKind::Ident, "Expected field identifier")?;
+                    let field_ident = self.unwrap_current_token().unwrap_value();
+                    let type_expr = self.parse_type_expr()?;
+
+                    fields.push(TypedVar::new(field_ident, type_expr));
+
+                    // Fields can be separated by commas or linebreaks
+                    self.matches_any_advance(&[
+                        TokenKind::Comma,
+                        TokenKind::LineBreak,
+                        TokenKind::Semicolon,
+                    ]);
+                }
+                VariantData::Struct(fields)
+            } else {
+                // 3. Unit Variant
+                VariantData::Unit
+            };
+
+            variants.push(Variant {
+                ident: variant_ident,
+                data,
+            });
+
+            // Variants themselves must be separated by commas or linebreaks
+            if !self
+                .peek()
+                .is_some_and(|t| t.is_of_kind(TokenKind::CloseBrace))
+            {
+                self.try_consume_token2(
+                    &[TokenKind::LineBreak, TokenKind::Comma, TokenKind::Semicolon],
+                    "Expected ',', or linebreak between variants",
+                )?;
+            }
+        }
+
+        Ok(Decl::Sum {
+            ident: sum_ident,
+            generics,
+            impl_traits,
+            variants,
+        })
+    }
+
+    fn parse_trait_decl(&mut self) -> Result<Decl, ParserError> {
+        self.advance(); // Consume 'trait' keyword
+
+        self.try_consume_token(TokenKind::Ident, "Expected trait identifier")?;
+        let ident = self.unwrap_current_token().unwrap_value();
+
+        let generics = self.parse_generic_params()?;
+
+        self.skip_line_terminators();
+        self.try_consume_token(TokenKind::OpenBrace, "Expected '{'")?;
+
+        let mut methods = Vec::new();
+
+        loop {
+            self.skip_line_terminators();
+            if self.matches_advance(TokenKind::CloseBrace) {
+                break;
+            }
+
+            methods.push(self.parse_fn_signature()?);
+
+            // Allow (but don't strictly require) linebreaks/semicolons between methods
+            self.skip_line_terminators();
+        }
+
+        Ok(Decl::Trait {
+            ident,
+            generics,
+            methods,
         })
     }
 

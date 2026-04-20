@@ -1,7 +1,9 @@
 use serde::Serialize;
 
 use crate::{
-    CodeBlock, ModulePath, op::{BinaryOp, UnaryOp}, token::{NumberLiteralKind, TokenKind}
+    CodeBlock, ModulePath,
+    op::{BinaryOp, UnaryOp},
+    token::{NumberLiteralKind, TokenKind},
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -10,7 +12,7 @@ pub enum Expr {
     Assign {
         assignee: Box<Expr>,
         operator: TokenKind, // TODO: maybe make this use it's own enum type like AssignmentOp?
-        value: Box<Expr>
+        value: Box<Expr>,
     },
     Binary {
         left_expr: Box<Expr>,
@@ -57,21 +59,6 @@ pub enum Expr {
 pub struct FnCall {
     pub callee: Box<Expr>, // callee / what value, what expression the function is being called on.
     pub args: Vec<Expr>,
-}   
-
-#[derive(Debug, Clone, Serialize)]
-#[deprecated]
-pub enum DotExpr {
-    
-    FnCall {
-        called_on: Box<Expr>,
-        fn_call: FnCall,
-    },
-
-    FieldAccess {
-        called_on: Box<Expr>,
-        member_ident: Ident,
-    },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -98,6 +85,27 @@ pub enum TypeExpr {
         length: Option<usize>,
         type_expr: Box<TypeExpr>,
     },
+    Generic {
+        ident: Ident,
+        params: Vec<TypeExpr>, // identifiers of generic type parameters 
+    },
+}
+
+
+// used in struct/sum declarations impl items.
+// struct A impl Trait[i32] 
+// (the [T] is optional. only for generic traits)
+// maybe rename to TraitImplDecl or something. I need to sleep.
+#[derive(Debug, Clone, Serialize)]
+pub struct TraitBound {
+    pub ident: Ident,
+    pub args: Vec<TypeExpr>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GenericParam {
+    pub ident: String,
+    pub bounds: Option<Vec<Ident>>,
 }
 
 impl TypeExpr {

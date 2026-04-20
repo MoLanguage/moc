@@ -83,6 +83,7 @@ pub enum TokenKind {
     Ident,
     If,
     In,
+    Impl,
     Is,
     Less,
     LessOrEqual,
@@ -113,6 +114,7 @@ pub enum TokenKind {
     SubAssign,
     Sum,
     Tilde, // ~
+    Trait,
     True,
     Use,
 }
