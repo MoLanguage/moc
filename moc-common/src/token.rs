@@ -93,7 +93,6 @@ pub enum TokenKind {
     Percent,
     Pipe,
     ModAssign,
-    ModulePath,
     MultAssign,
     Next, // keyword, like 'continue' in other languages
     ExclEquals,
@@ -161,13 +160,6 @@ impl Token {
     pub fn ident(ident: String, span: CodeSpan) -> Self {
         Self {
             kind: TokenKind::Ident,
-            value: Some(ident.into()),
-            span,
-        }
-    }
-    pub fn module_path(ident: String, span: CodeSpan) -> Self {
-        Self {
-            kind: TokenKind::ModulePath,
             value: Some(ident.into()),
             span,
         }
@@ -268,6 +260,7 @@ impl Token {
             OpenParen => Some((110, 0)), // 0 on the right because it's postfix/special
             Dot => Some((120, 0)),
             OpenBrack => Some((110, 0)),
+            TokenKind::Colon => Some((9, 10)), 
             DeclareAssign | Equals | AddAssign | SubAssign | MultAssign | DivAssign | ModAssign
             | BitAndAssign | BitOrAssign | BitNotAssign | BitXorAssign | BitShiftLeftAssign
             | BitShiftRightAssign => Some((10, 9)), // Right-associative assignment

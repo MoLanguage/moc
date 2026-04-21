@@ -40,8 +40,17 @@ pub enum Expr {
         else_block: Option<CodeBlock>,
     },
     BoolLiteral(bool),
-    FnCall(FnCall),
     Grouping(Box<Expr>),
+    FnCall {
+        callee: Box<Expr>, // callee / what value, what expression the function is being called on. 
+        args: Vec<Expr>,
+    },
+    
+    // this is only part. A full generic FnCall consists of FnCall with callee being an expr of type GenericFnCallPart.
+    GenericFnCallPart {
+        callee: Box<Expr>,
+        type_args: Option<Vec<TypeExpr>>, 
+    },
     Variable {
         ident: Ident,
     },
@@ -55,11 +64,6 @@ pub enum Expr {
     Empty,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct FnCall {
-    pub callee: Box<Expr>, // callee / what value, what expression the function is being called on.
-    pub args: Vec<Expr>,
-}
 
 #[derive(Debug, Clone, Serialize)]
 pub enum Ident {

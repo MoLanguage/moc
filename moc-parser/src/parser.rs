@@ -1,4 +1,4 @@
-use std::{usize, vec::IntoIter};
+use std::{collections::VecDeque, usize, vec::IntoIter};
 
 use itertools::{PeekNth, peek_nth};
 use log::debug;
@@ -7,7 +7,7 @@ use moc_common::{
     ast::Ast,
     decl::{Decl, FnSignature, Variant, VariantData},
     error::{ExprParseResult, ParseResult, ParserError},
-    expr::{Expr, FnCall, GenericParam, Ident, TraitBound, TypeExpr},
+    expr::{Expr, GenericParam, Ident, TraitBound, TypeExpr},
     op::{BinaryOp, UnaryOp},
     stmt::Stmt,
     token::{Token, TokenKind},
@@ -54,8 +54,8 @@ impl Parser {
                 token.unwrap_value(),
                 token.kind.try_into().unwrap(), // converts the TokenKind into the NumberLiteralKind. Because we know the TokenKind is a number literal, the conversion shouldn't panic.
             )),
-            Ident | ModulePath => {
-                let ident = self.ident_token_to_ident();
+            Ident => {
+                let ident = self.parse_path_or_ident();
                 Ok(Expr::Variable {
                     ident, // could "evolve into" function call, module identifier or just stay a simple variable.
                 })
@@ -123,10 +123,10 @@ impl Parser {
             match op_token.kind {
                 TokenKind::OpenParen => {
                     let args = self.parse_fn_call_args()?;
-                    left = Expr::FnCall(FnCall {
+                    left = Expr::FnCall {
                         callee: Box::new(left),
                         args,
-                    });
+                    };
                     continue;
                 }
                 TokenKind::Dot => {
@@ -142,11 +142,11 @@ impl Parser {
 
                     self.skip_line_terminators();
 
-                    self.try_consume_token2(
-                        &[TokenKind::Ident, TokenKind::ModulePath],
+                    self.try_consume_token(
+                        TokenKind::Ident,
                         "Expected identifier or '*' after '.'",
                     )?;
-                    let member_ident = self.ident_token_to_ident();
+                    let member_ident = self.parse_path_or_ident();
                     left = Expr::FieldAccess {
                         called_on: Box::new(left),
                         member_ident,
@@ -163,6 +163,38 @@ impl Parser {
                     left = Expr::ArrayAccessor {
                         array: Box::new(left),
                         index: Box::new(index_expr),
+                    };
+                    continue;
+                }
+                // Explicit Generic Function Call (e.g., foo:[T])
+                TokenKind::Colon => {
+                    self.try_consume_token(
+                        TokenKind::OpenBrack,
+                        "Expected '[' after ':' for generic call",
+                    )?;
+
+                    let mut type_args = Vec::new();
+                    if !self.matches_advance(TokenKind::CloseBrack) {
+                        loop {
+                            self.skip_line_terminators();
+                            type_args.push(self.parse_type_expr()?); // Pure TypeExpr parsing!
+                            self.skip_line_terminators();
+
+                            if self.matches_advance(TokenKind::CloseBrack) {
+                                break;
+                            }
+                            if self.matches_advance(TokenKind::Comma) {
+                                continue;
+                            }
+
+                            return ParserError::new("Expected ',' or ']'", self.peek().cloned())
+                                .wrap();
+                        }
+                    }
+
+                    left = Expr::GenericFnCallPart {
+                        callee: Box::new(left),
+                        type_args: Some(type_args),
                     };
                     continue;
                 }
@@ -239,27 +271,19 @@ impl Parser {
     // use io | use io "foo"
     // use io:print | use io:print "printie"
     fn parse_use_decl(&mut self) -> Result<Decl, ParserError> {
-        // Just peeked Use token
-        self.advance();
-        self.try_consume_token(TokenKind::ModulePath, "Expected module identifier")?;
-        let identifier = self.unwrap_current_token().unwrap_value();
-        let module_ident = ModulePath::from_string(&identifier);
-        let decl;
-        if self.matches_advance(TokenKind::StringLiteral) {
-            decl = Decl::Use {
-                module_ident,
-                module_alias: Some(self.unwrap_current_token().unwrap_value()),
-            };
+        self.advance(); // consume 'use'
+
+        self.try_consume_token(TokenKind::Ident, "Expected identifier")?;
+        let path = self.parse_path_or_ident();
+
+        let alias = if self.matches_advance(TokenKind::StringLiteral) {
+            Some(self.unwrap_current_token().unwrap_value())
         } else {
-            decl = Decl::Use {
-                module_ident,
-                module_alias: None,
-            };
-        }
+            None
+        };
 
-        Ok(decl)
+        Ok(Decl::Use { path, alias })
     }
-
     fn parse_fn_signature(&mut self) -> Result<FnSignature, ParserError> {
         // Just peeked Fn token
         self.advance();
@@ -348,20 +372,15 @@ impl Parser {
 
                     let mut bounds = Vec::new();
 
-                    // If we see a colon, parse the trait bounds!
-                    if self.matches_advance(TokenKind::Colon) {
+                    // If we see an impl, parse the trait bounds!
+                    if self.matches_advance(TokenKind::Impl) {
                         loop {
-                            self.try_consume_token2(
-                                &[TokenKind::Ident, TokenKind::ModulePath],
-                                "Expected trait identifier",
-                            )?;
-                            bounds.push(self.ident_token_to_ident());
+                            self.try_consume_token(TokenKind::Ident, "Expected trait")?;
+                            bounds.push(self.parse_path_or_ident());
 
-                            // If there's a '+', there are more bounds for this generic
-                            if self.matches_advance(TokenKind::Plus) {
-                                continue;
+                            if !self.matches(TokenKind::Ident) {
+                                break;
                             }
-                            break; // No more '+', we are done with bounds for this generic
                         }
                     }
 
@@ -397,11 +416,8 @@ impl Parser {
         let mut traits = Vec::new();
         if self.matches_advance(TokenKind::Impl) {
             loop {
-                self.try_consume_token2(
-                    &[TokenKind::Ident, TokenKind::ModulePath],
-                    "Expected trait identifier",
-                )?;
-                let ident = self.ident_token_to_ident();
+                self.try_consume_token(TokenKind::Ident, "Expected trait")?;
+                let ident = self.parse_path_or_ident();
 
                 let mut args = Vec::new();
                 if self.matches_advance(TokenKind::OpenBrack) {
@@ -446,11 +462,11 @@ impl Parser {
                 TokenKind::Break => return self.parse_break_stmt(),
                 TokenKind::Next => return Ok(Stmt::Next),
                 TokenKind::OpenBrace => return Ok(Stmt::CodeBlock(self.parse_code_block()?)),
-                TokenKind::Ident | TokenKind::ModulePath => {
+                TokenKind::Ident => {
                     // Parse variable declarations
                     if let Some(var_decl) = self.parse_var_decl()? {
-                        // Make sure to consume the line break / semicolon here if needed
-                        self.skip_tokens(TokenKind::LineBreak);
+                        // Make sure to consume the possible line break / semicolon here
+                        self.skip_line_terminators();
                         return Ok(var_decl);
                     }
                 }
@@ -597,8 +613,8 @@ impl Parser {
         }
 
         // identifier with optional module path prefix
-        if self.matches_any_advance(&[TokenKind::Ident, TokenKind::ModulePath]) {
-            let base_ident = self.ident_token_to_ident();
+        if self.matches_any_advance(&[TokenKind::Ident]) {
+            let base_ident = self.parse_path_or_ident();
 
             // generic type
             if self.matches_advance(TokenKind::OpenBrack) {
@@ -606,10 +622,7 @@ impl Parser {
                 if !self.matches(TokenKind::CloseBrack) {
                     loop {
                         self.skip_line_terminators();
-                        self.try_consume_token(
-                            TokenKind::Ident,
-                            "Expected generic type identifier",
-                        )?;
+                        
                         generic_params.push(self.parse_type_expr()?);
                         self.skip_line_terminators();
 
@@ -852,11 +865,7 @@ impl Parser {
                     fields.push(TypedVar::new(field_ident, type_expr));
 
                     // Fields can be separated by commas or linebreaks
-                    self.matches_any_advance(&[
-                        TokenKind::Comma,
-                        TokenKind::LineBreak,
-                        TokenKind::Semicolon,
-                    ]);
+                    self.matches_any_advance(&[TokenKind::Comma, TokenKind::LineBreak]);
                 }
                 VariantData::Struct(fields)
             } else {
@@ -875,7 +884,7 @@ impl Parser {
                 .is_some_and(|t| t.is_of_kind(TokenKind::CloseBrace))
             {
                 self.try_consume_token2(
-                    &[TokenKind::LineBreak, TokenKind::Comma, TokenKind::Semicolon],
+                    &[TokenKind::LineBreak, TokenKind::Comma],
                     "Expected ',', or linebreak between variants",
                 )?;
             }
@@ -928,25 +937,35 @@ impl Parser {
         self.expr(0)
     }
 
-    /// Tries to convert the current Ident/ModulePath token into an Ident
-    /// Panics: If current token is not of kind Ident or ModulePath
-    #[inline]
-    fn ident_token_to_ident(&self) -> Ident {
-        let token = self.unwrap_current_token();
-        let ident = token.unwrap_value();
-        return match token.kind {
-            TokenKind::Ident => Ident::Simple(ident),
-            TokenKind::ModulePath => {
-                let mut module_path_prefix = ModulePath::from_string(&ident);
-                let ident = module_path_prefix.remove_and_get_last_path();
-
-                Ident::WithModulePrefix(module_path_prefix, ident)
-            }
-            _ => panic!("Given token needs to be of type ModulePath or Ident"),
-        };
-    }
-
     // :Utils
+
+    /// Parses a path or simple ident
+    /// Assumes the first identifier has just been consumed.
+    fn parse_path_or_ident(&mut self) -> Ident {
+        let first_ident = self.unwrap_current_token().unwrap_value();
+        let mut path_parts = VecDeque::new();
+        path_parts.push_back(first_ident);
+
+        while self.is_next_of_type(TokenKind::Colon) {
+            if let Some(next_token) = self.peek_nth(1) {
+                if next_token.kind == TokenKind::Ident {
+                    self.advance(); // consume ':'
+                    self.advance(); // consume Ident
+                    path_parts.push_back(self.unwrap_current_token().unwrap_value());
+                    continue;
+                }
+            }
+            break; // Break if it's not followed by an Ident (e.g. `:[` generic call)
+        }
+
+        if path_parts.len() > 1 {
+            let ident_name = path_parts.pop_back().unwrap();
+            let module_path = ModulePath { path: path_parts };
+            Ident::WithModulePrefix(module_path, ident_name)
+        } else {
+            Ident::Simple(path_parts.pop_front().unwrap())
+        }
+    }
 
     /// Gets and clones current token.
     /// # Panics

@@ -1,8 +1,8 @@
 use serde::Serialize;
 
 use crate::{
-    CodeBlock, ModulePath, TypedVar,
-    expr::{Expr, GenericParam, TraitBound, TypeExpr},
+    CodeBlock, TypedVar,
+    expr::{Expr, GenericParam, Ident, TraitBound, TypeExpr},
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -21,8 +21,8 @@ pub enum Decl {
         body: CodeBlock,
     },
     Use {
-        module_ident: ModulePath,
-        module_alias: Option<String>,
+        path: Ident,
+        alias: Option<String>,
     },
     Struct {
         ident: String,

@@ -403,12 +403,8 @@ impl<'a> Lexer<'a> {
     fn lex_keyword_or_ident(&mut self) -> Token {
         let mut ident = String::new();
 
-        let mut contains_colon = false;
         while let Some(ch) = self.peek_char() {
-            if !contains_colon {
-                contains_colon = ch == ':';
-            }
-            if ch.is_alphanumeric() || ch == '_' || ch == ':' {
+            if ch.is_alphanumeric() || ch == '_' {
                 ident.push(ch);
                 self.advance();
             } else {
@@ -434,13 +430,7 @@ impl<'a> Lexer<'a> {
             "true" => token!(self, True),
             "trait" => token!(self, Trait),
             "use" => token!(self, Use),
-            _ => {
-                if contains_colon {
-                    Token::module_path(ident, (self.last_token_end, self.location).into())
-                } else {
-                    Token::ident(ident, (self.last_token_end, self.location).into())
-                }
-            }
+            _ => Token::ident(ident, (self.last_token_end, self.location).into()),
         }
     }
 
