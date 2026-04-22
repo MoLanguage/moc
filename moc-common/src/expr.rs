@@ -55,7 +55,6 @@ pub enum Expr {
         ident: Ident,
     },
     NumberLiteral(String, NumberLiteralKind),
-
     StringLiteral(String),
     Unary {
         operator: UnaryOp,

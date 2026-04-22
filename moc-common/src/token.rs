@@ -101,6 +101,8 @@ pub enum TokenKind {
     HexadecimalIntegerNumberLiteral,
     OctalIntegerNumberLiteral,
     BinaryIntegerNumberLiteral,
+    ScientificDecimalNumberLiteral, // 1e9 = 1,000,000,000 | 1e-9 = 0.000000001 | 0.1e9 = 100,000,000 | 0.1e-9 = 0.0000000001
+    ScientificHexNumberLiteral,     // 0x10p10 =  0x10 * 2^10 | 0x10p-10 = 0x10 * 2^-10
     OpenBrace,
     OpenParen,
     Plus,
@@ -118,23 +120,26 @@ pub enum TokenKind {
     Use,
 }
 
-#[derive(Debug, Clone, Display, Serialize)]
+#[derive(Debug, Clone, Copy, Display, Serialize, Eq, PartialEq)]
 pub enum NumberLiteralKind {
     DecimalInteger,
     DecimalPoint, // like floating point
     BinaryInteger,
     OctalInteger,
     HexadecimalInteger,
+    ScientificDecimal, // 1e9 = 1,000,000,000 | 1e-9 = 0.000000001 | 0.1e9 = 100,000,000 | 0.1e-9 = 0.0000000001
+    ScientificHex,     // 0x10p10 =  0x10 * 2^10 | 0x10p-10 = 0x10 * 2^-10
 }
 
 impl NumberLiteralKind {
     pub fn get_radix(&self) -> u32 {
         match self {
-            NumberLiteralKind::DecimalInteger => 10,
-            NumberLiteralKind::DecimalPoint => 10,
+            NumberLiteralKind::DecimalInteger
+            | NumberLiteralKind::ScientificDecimal
+            | NumberLiteralKind::DecimalPoint => 10,
             NumberLiteralKind::BinaryInteger => 2,
             NumberLiteralKind::OctalInteger => 8,
-            NumberLiteralKind::HexadecimalInteger => 16,
+            NumberLiteralKind::HexadecimalInteger | NumberLiteralKind::ScientificHex => 16,
         }
     }
 
@@ -145,6 +150,8 @@ impl NumberLiteralKind {
             NumberLiteralKind::BinaryInteger => TokenKind::BinaryIntegerNumberLiteral,
             NumberLiteralKind::OctalInteger => TokenKind::OctalIntegerNumberLiteral,
             NumberLiteralKind::HexadecimalInteger => TokenKind::HexadecimalIntegerNumberLiteral,
+            NumberLiteralKind::ScientificDecimal => TokenKind::ScientificDecimalNumberLiteral,
+            NumberLiteralKind::ScientificHex => TokenKind::ScientificHexNumberLiteral,
         }
     }
 }
@@ -260,7 +267,7 @@ impl Token {
             OpenParen => Some((110, 0)), // 0 on the right because it's postfix/special
             Dot => Some((120, 0)),
             OpenBrack => Some((110, 0)),
-            TokenKind::Colon => Some((9, 10)), 
+            TokenKind::Colon => Some((9, 10)),
             DeclareAssign | Equals | AddAssign | SubAssign | MultAssign | DivAssign | ModAssign
             | BitAndAssign | BitOrAssign | BitNotAssign | BitXorAssign | BitShiftLeftAssign
             | BitShiftRightAssign => Some((10, 9)), // Right-associative assignment
@@ -297,6 +304,8 @@ impl TryFrom<TokenKind> for NumberLiteralKind {
             TokenKind::BinaryIntegerNumberLiteral => Ok(NumberLiteralKind::BinaryInteger),
             TokenKind::OctalIntegerNumberLiteral => Ok(NumberLiteralKind::OctalInteger),
             TokenKind::HexadecimalIntegerNumberLiteral => Ok(NumberLiteralKind::HexadecimalInteger),
+            TokenKind::ScientificDecimalNumberLiteral => Ok(NumberLiteralKind::ScientificDecimal),
+            TokenKind::ScientificHexNumberLiteral => Ok(NumberLiteralKind::ScientificHex),
             _ => Err(NonNumberLiteralTokenTypeError),
         }
     }

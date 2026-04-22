@@ -292,7 +292,9 @@ impl<'a> Lexer<'a> {
         let mut num = String::new();
 
         let mut has_decimal_point = false;
+        let mut has_exponent = false;
         let mut first_iter = true;
+
         while let Some(ch) = self.peek_char() {
             if first_iter && ch == '0' {
                 if let Some(lex_result) = self.lex_non_decimal_literal(&mut num) {
@@ -305,12 +307,28 @@ impl<'a> Lexer<'a> {
                 num.push(ch);
                 self.advance();
             } else if ch == '.' {
-                if !has_decimal_point {
+                if !has_decimal_point && !has_exponent {
                     has_decimal_point = true;
                     num.push(ch);
                     self.advance();
                 } else {
                     return Err(LexerError::MultiDecimalPointInNumberLiteral);
+                }
+            } else if ch == 'e' || ch == 'E' {
+                if !has_exponent {
+                    has_exponent = true;
+                    num.push(ch);
+                    self.advance();
+
+                    // Exponents can optionally have a +/- sign
+                    if let Some(next_ch) = self.peek_char() {
+                        if next_ch == '+' || next_ch == '-' {
+                            num.push(next_ch);
+                            self.advance();
+                        }
+                    }
+                } else {
+                    break;
                 }
             } else if ch == '_' {
                 self.advance();
@@ -319,15 +337,20 @@ impl<'a> Lexer<'a> {
             }
             first_iter = false;
         }
-        if has_decimal_point {
-            return Ok(Token::number_literal(
-                num,
-                NumberLiteralKind::DecimalPoint,
-                (self.last_token_end, self.location).into(),
-            ));
-        }
-        Ok(Token::integer(
+
+        // Determine the final token kind based on what we found
+        let kind = if has_exponent {
+            NumberLiteralKind::ScientificDecimal
+        } else if has_decimal_point {
+            NumberLiteralKind::DecimalPoint
+        } else {
+            // Assuming you have a standard integer kind, update this if your enum uses a different name
+            NumberLiteralKind::DecimalInteger
+        };
+
+        Ok(Token::number_literal(
             num,
+            kind,
             (self.last_token_end, self.location).into(),
         ))
     }
@@ -374,30 +397,67 @@ impl<'a> Lexer<'a> {
         num: &mut String,
         literal_kind: NumberLiteralKind,
     ) -> LexerResult {
+        // We capture the starting kind, but allow it to "upgrade" to ScientificHex
+        let mut final_kind = literal_kind;
+        let mut has_decimal = false;
+        let mut has_exponent = false;
+
         self.advance_n(2);
         let mut first = true;
+
         while let Some(ch) = self.peek_char() {
-            if ch.is_digit(literal_kind.get_radix()) {
-                num.push(ch);
-                self.advance();
-            } else if ch == '_' {
+            if ch == '_' {
                 self.advance();
                 continue;
-            } else if ch.is_digit(16) || first {
-                // max digit
-                return Err(
-                    LexerError::UnexpectedCharacterLexingNonDecimalNumberLiteral(self.location),
-                );
+            }
+
+            if literal_kind == NumberLiteralKind::HexadecimalInteger {
+                // Hex numbers can have A-F, a decimal '.', and an exponent 'p'/'P'
+                if ch.is_digit(16) {
+                    num.push(ch);
+                    self.advance();
+                } else if ch == '.' && !has_decimal && !has_exponent {
+                    has_decimal = true;
+                    final_kind = NumberLiteralKind::ScientificHex;
+                    num.push(ch);
+                    self.advance();
+                } else if (ch == 'p' || ch == 'P') && !has_exponent {
+                    has_exponent = true;
+                    final_kind = NumberLiteralKind::ScientificHex;
+                    num.push(ch);
+                    self.advance();
+
+                    // Hex exponents can also have a +/- sign
+                    if let Some(next_ch) = self.peek_char() {
+                        if next_ch == '+' || next_ch == '-' {
+                            num.push(next_ch);
+                            self.advance();
+                        }
+                    }
+                } else {
+                    break;
+                }
             } else {
-                break;
+                // Binary and Octal fall back to the standard strict logic
+                if ch.is_digit(literal_kind.get_radix()) {
+                    num.push(ch);
+                    self.advance();
+                } else if ch.is_digit(16) || first {
+                    return Err(
+                        LexerError::UnexpectedCharacterLexingNonDecimalNumberLiteral(self.location),
+                    );
+                } else {
+                    break;
+                }
             }
             first = false;
         }
-        return Ok(Token::number_literal(
+
+        Ok(Token::number_literal(
             num.clone(),
-            literal_kind,
+            final_kind,
             (self.last_token_end, self.location).into(),
-        ));
+        ))
     }
 
     fn lex_keyword_or_ident(&mut self) -> Token {

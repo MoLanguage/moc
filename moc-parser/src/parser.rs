@@ -50,7 +50,9 @@ impl Parser {
             | DecimalPointNumberLiteral
             | BinaryIntegerNumberLiteral
             | OctalIntegerNumberLiteral
-            | HexadecimalIntegerNumberLiteral => Ok(Expr::NumberLiteral(
+            | HexadecimalIntegerNumberLiteral 
+            | ScientificDecimalNumberLiteral 
+            | ScientificHexNumberLiteral=> Ok(Expr::NumberLiteral(
                 token.unwrap_value(),
                 token.kind.try_into().unwrap(), // converts the TokenKind into the NumberLiteralKind. Because we know the TokenKind is a number literal, the conversion shouldn't panic.
             )),
@@ -350,7 +352,6 @@ impl Parser {
         let mut code_block = CodeBlock::new();
         loop {
             if self.matches_advance(TokenKind::CloseBrace) {
-                self.skip_tokens(TokenKind::LineBreak);
                 debug!("matched closebrace, returning codeblock");
                 return Ok(code_block);
             }
@@ -473,17 +474,15 @@ impl Parser {
                 _ => {}
             }
             // If it wasn't a dedicated statement or a variable declaration,
-            // it MUST be an expression statement (e.g. `foo();` or `a = 10;` or `a.b += 5;`)
+            // it MUST be an expression statement (e.g. `foo()` or `a = 10` or `a.b += 5`)
             let expr = self.parse_expression()?;
 
             // If the next token isn't a valid terminator or the end of a block, throw an error!
             if !self.matches_any(&[TokenKind::LineBreak, TokenKind::Semicolon])
-                && !self
-                    .peek()
-                    .is_some_and(|t| t.is_of_kind(TokenKind::CloseBrace))
+                && !self.matches(TokenKind::CloseBrace)
             {
                 return Err(ParserError::new(
-                    "Expected newline or ';' after expression",
+                    "Expected newline or semicolon after expression statement",
                     self.peek().cloned(),
                 ));
             }
@@ -498,9 +497,9 @@ impl Parser {
     }
 
     // Parses statements of this form:
-    // a i32 := 10   | DeclAssignmt
-    // a := 10       | DeclAssignmt (no type identifier. type to be inferred)
-    // a [3]i32 := 10| DeclAssignmt with complex type
+    // a i32 := 10    | DeclAssignmt
+    // a := 10        | DeclAssignmt (no type identifier. type to be inferred)
+    // a [3]i32 := 10 | DeclAssignmt with complex type
     fn parse_var_decl(&mut self) -> Result<Option<Stmt>, ParserError> {
         // 1. Scan ahead to find out if this statement contains a ':='
         let mut i = 0;
@@ -513,10 +512,12 @@ impl Parser {
                     break;
                 }
                 Some(token)
-                    if token.kind == TokenKind::LineBreak
-                        || token.kind == TokenKind::Semicolon
-                        || token.kind == TokenKind::Equals
-                        || token.kind == TokenKind::OpenBrace =>
+                    if token.is_of_any_kinds(&[
+                        TokenKind::LineBreak,
+                        TokenKind::Semicolon,
+                        TokenKind::Equals,
+                        TokenKind::OpenBrace,
+                    ]) =>
                 {
                     // We hit a statement boundary or an assignment, so it's not a var decl
                     break;
@@ -622,7 +623,7 @@ impl Parser {
                 if !self.matches(TokenKind::CloseBrack) {
                     loop {
                         self.skip_line_terminators();
-                        
+
                         generic_params.push(self.parse_type_expr()?);
                         self.skip_line_terminators();
 
