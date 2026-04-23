@@ -1,7 +1,7 @@
 use clap::Parser;
 use moc_common::debug_utils;
 use moc_main::CompilerOptions;
-use ron::ser::PrettyConfig;
+use ron::{extensions::Extensions, ser::PrettyConfig};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -30,12 +30,15 @@ fn main() {
         debug_utils::print_tokens(&tokens);
     }
     if let Some(ast) = result.ast {
-        let config = PrettyConfig::default()
+        let pretty_config = PrettyConfig::default()
             .compact_arrays(true)
             .escape_strings(true)
             .separate_tuple_members(false);
-        let ron_ast = ron::ser::to_string_pretty(&ast, config).unwrap();
-        println!("{}", ron_ast);
+        ron::Options::default()
+            .with_default_extension(Extensions::IMPLICIT_SOME | Extensions::UNWRAP_NEWTYPES | Extensions::UNWRAP_VARIANT_NEWTYPES)
+            .to_io_writer_pretty(std::io::stdout(), &ast, pretty_config)
+            .expect("Error writing to stdout");
+        println!(); // add newline char
     }
     if !result.errors.is_empty() {
         for error in result.errors {

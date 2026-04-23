@@ -1,13 +1,11 @@
 use serde::Serialize;
 
 use crate::{
-    CodeBlock, ModulePath,
-    op::{BinaryOp, UnaryOp},
-    token::{NumberLiteralKind, TokenKind},
+    CodeBlock, CodeLocation, CodeSpan, ModulePath, op::{BinaryOp, UnaryOp}, token::{NumberLiteralKind, TokenKind}
 };
 
 #[derive(Debug, Clone, Serialize)]
-pub enum Expr {
+pub enum ExprKind {
     // Expressions
     Assign {
         assignee: Box<Expr>,
@@ -42,14 +40,14 @@ pub enum Expr {
     BoolLiteral(bool),
     Grouping(Box<Expr>),
     FnCall {
-        callee: Box<Expr>, // callee / what value, what expression the function is being called on. 
+        callee: Box<Expr>, // callee / what value, what expression the function is being called on.
         args: Vec<Expr>,
     },
-    
+
     // this is only part. A full generic FnCall consists of FnCall with callee being an expr of type GenericFnCallPart.
     GenericFnCallPart {
         callee: Box<Expr>,
-        type_args: Option<Vec<TypeExpr>>, 
+        type_args: Option<Vec<TypeExpr>>,
     },
     Variable {
         ident: Ident,
@@ -63,6 +61,11 @@ pub enum Expr {
     Empty,
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub struct Expr {
+    pub span: CodeSpan,
+    pub kind: ExprKind,
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub enum Ident {
@@ -90,13 +93,12 @@ pub enum TypeExpr {
     },
     Generic {
         ident: Ident,
-        params: Vec<TypeExpr>, // identifiers of generic type parameters 
+        params: Vec<TypeExpr>, // identifiers of generic type parameters
     },
 }
 
-
 // used in struct/sum declarations impl items.
-// struct A impl Trait[i32] 
+// struct A impl Trait[i32]
 // (the [T] is optional. only for generic traits)
 // maybe rename to TraitImplDecl or something. I need to sleep.
 #[derive(Debug, Clone, Serialize)]
@@ -118,21 +120,28 @@ impl TypeExpr {
 }
 
 impl Expr {
+    pub fn new(kind: ExprKind, span: CodeSpan) -> Self {
+        Self { kind, span }
+    }
+
     pub fn binary(left: Self, operator: BinaryOp, right: Self) -> Self {
-        Self::Binary {
-            left_expr: Box::new(left),
-            operator,
-            right_expr: Box::new(right),
-        }
+        let span = left.span.merge(right.span);
+        Self::new(
+            ExprKind::Binary {
+                left_expr: Box::new(left),
+                operator,
+                right_expr: Box::new(right),
+            },
+            span,
+        )
     }
-    pub fn grouping(expr: Self) -> Self {
-        Self::Grouping(Box::new(expr))
-    }
-    pub fn unary(operator: UnaryOp, right: Self) -> Self {
-        Self::Unary {
+
+    pub fn unary(start: CodeLocation, operator: UnaryOp, right: Self) -> Self {
+        let span = (start, (&right.span).end).into();
+        Expr::new(ExprKind::Unary {
             operator,
             expr: Box::new(right),
-        }
+        }, span)
     }
     pub fn boxed(self) -> Box<Self> {
         Box::new(self)

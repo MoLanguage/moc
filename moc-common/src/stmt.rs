@@ -1,9 +1,9 @@
 use serde::Serialize;
 
-use crate::{CodeBlock, expr::{Expr, TypeExpr}, op::BinaryOp};
+use crate::{CodeBlock, CodeSpan, expr::{Expr, TypeExpr}, op::BinaryOp};
 
 #[derive(Clone, Debug, Serialize)]
-pub enum Stmt {
+pub enum StmtKind {
     Print(Expr), // probably dont wanna have this as inbuilt function
     // a i32 (declaring variable)
     LocalVarDecl {
@@ -32,9 +32,21 @@ pub enum Stmt {
     },
     Defer(Box<Stmt>),
     Expr(Expr), // expression statement (like function call)
-   
-    
+
+
     Ret(Option<Expr>), // return statement
     CodeBlock(CodeBlock),
     Next,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct Stmt {
+    span: CodeSpan,
+    kind: StmtKind,
+}
+
+impl Stmt {
+    pub fn new(kind: StmtKind, span: CodeSpan) -> Self {
+        Self { kind, span }
+    }
 }

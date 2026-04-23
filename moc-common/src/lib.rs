@@ -3,23 +3,27 @@ pub mod debug_utils;
 pub mod decl;
 pub mod error;
 pub mod expr;
+pub mod op;
 pub mod stmt;
 pub mod token;
-pub mod op;
 
 use std::{
     collections::VecDeque,
     fmt::{Debug, Display},
 };
 
+use derive_more::Display;
 use serde::Serialize;
 
-use crate::{expr::TypeExpr, stmt::Stmt};
+use crate::{
+    expr::TypeExpr,
+    stmt::Stmt,
+};
 
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct CodeLocation {
-    pub line: u32,
-    pub column: u32,
+    pub line: usize,
+    pub column: usize,
 }
 
 impl CodeLocation {
@@ -45,15 +49,44 @@ pub struct CodeSpan {
     pub start: CodeLocation,
     pub end: CodeLocation,
 }
+#[derive(Debug, Display)]
+pub struct ExpandCodeSpanError;
+impl std::error::Error for ExpandCodeSpanError {}
 
 impl CodeSpan {
-    // Shouldnt ever be true really >:(
-    // What the heck did I think here?
-    pub fn spans_across_lines(&self) -> bool {
-        !self.start.is_in_same_line(&self.end)
+    pub fn is_single_line(&self) -> bool {
+        self.start.line == self.end.line
     }
-    pub fn length(&self) -> u32 {
+
+    pub fn length(&self) -> usize {
         self.end.column - self.start.column
+    }
+
+    pub fn try_extend_left(&mut self, chars: usize) -> Result<(), ExpandCodeSpanError> {
+        if self.start.column - chars > 0 {
+            self.start.column -= chars;
+            Ok(())
+        } else {
+            Err(ExpandCodeSpanError)
+        }
+    }
+
+    pub fn extend_right(&mut self, chars: usize) {
+        self.start.column += chars;
+    }
+
+    pub fn try_extend_both_sides(&mut self, chars: usize) -> Result<(), ExpandCodeSpanError> {
+        self.try_extend_left(chars)?;
+        self.extend_right(chars);
+        Ok(())
+    }
+
+    /// Creates a new span that encompasses both `self` and `other`
+    pub fn merge(self, other: Self) -> Self {
+        Self {
+            start: self.start,
+            end: other.end,
+        }
     }
 }
 
@@ -111,7 +144,10 @@ impl ModulePath {
     }
 
     pub fn remove_and_get_last_path(&mut self) -> String {
-        let suffix = self.path.pop_back().expect("ModulePath should not be empty.");
+        let suffix = self
+            .path
+            .pop_back()
+            .expect("ModulePath should not be empty.");
         suffix
     }
 }

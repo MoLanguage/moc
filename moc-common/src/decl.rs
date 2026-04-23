@@ -1,8 +1,7 @@
 use serde::Serialize;
 
 use crate::{
-    CodeBlock, TypedVar,
-    expr::{Expr, GenericParam, Ident, TraitBound, TypeExpr},
+    CodeBlock, CodeSpan, TypedVar, expr::{Expr, GenericParam, Ident, TraitBound, TypeExpr}
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -14,7 +13,7 @@ pub struct FnSignature {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub enum Decl {
+pub enum DeclKind {
     Fn {
         // function declaration
         signature: FnSignature,
@@ -44,6 +43,18 @@ pub enum Decl {
     // global variable/constant?
     // Only for debugging stuff! If I want to just test parsing expressions without all the other shebang.
     LooseExpr(Expr),
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Decl {
+    pub span: CodeSpan,
+    pub kind: DeclKind,
+}
+
+impl Decl {
+    pub fn new(kind: DeclKind, span: CodeSpan) -> Self {
+        Self { kind, span }
+    }
 }
 
 // sum type variant stuff
