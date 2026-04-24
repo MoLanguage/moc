@@ -189,9 +189,9 @@ impl Token {
             span,
         }
     }
-    pub fn new(r#type: TokenKind, span: CodeSpan) -> Self {
+    pub fn new(kind: TokenKind, span: CodeSpan) -> Self {
         Self {
-            kind: r#type,
+            kind,
             value: None,
             span,
         }

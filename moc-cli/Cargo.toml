@@ -12,3 +12,4 @@ moc-llvm = { path = "../moc-llvm" }
 simple_logger = "5.2.0"
 ron = "0.12.1"
 serde = "1.0.228"
+ariadne = { git = "https://codeberg.org/zesterer/ariadne.git", version = "0.7.0" }

@@ -6,7 +6,7 @@ use moc_common::{
     CodeBlock, CodeSpan, ModulePath, TypedVar,
     ast::Ast,
     decl::{Decl, DeclKind, FnSignature, Variant, VariantData},
-    error::{ExprParseResult, ParseResult, ParserError},
+    error::{ExprParseResult, ParserError},
     expr::{Expr, ExprKind, GenericParam, Ident, TraitBound, TypeExpr},
     op::{BinaryOp, UnaryOp},
     stmt::{Stmt, StmtKind},
@@ -17,6 +17,7 @@ pub struct Parser {
     token_stream: PeekNth<IntoIter<Token>>,
     current_token: Option<Token>,
     ast: Ast,
+    pub errors: Vec<ParserError>,
     only_expr: bool, // if true only parses an expresion, if false, parses full program structure.
 }
 
@@ -30,11 +31,12 @@ impl Parser {
             token_stream: peek_nth(tokens),
             current_token: None,
             ast: Ast::new(),
+            errors: Vec::new(),
             only_expr,
         };
         parser
     }
-    
+
     /// Creates a CodeSpan starting and ending at the current token
     pub fn start_span_at_current(&self) -> CodeSpan {
         self.unwrap_current_token().span
@@ -50,15 +52,21 @@ impl Parser {
         span.end = self.unwrap_current_token().span.end;
     }
 
-    pub fn parse(mut self) -> ParseResult {
+    pub fn parse(&mut self) -> &Ast {
         if self.only_expr {
-            let expr = self.expr(0)?;
-            let span = expr.span;
-            self.ast.push(Decl::new(DeclKind::LooseExpr(expr), span));
+            match self.expr(0) {
+                Ok(expr) => {
+                    let span = expr.span;
+                    self.ast.push(Decl::new(DeclKind::LooseExpr(expr), span));
+                }
+                Err(error) => self.errors.push(error),
+            }
         } else {
-            (&mut self).parse_top_level_decls()?;
+            if let Err(error) = self.parse_top_level_decls() {
+                self.errors.push(error);
+            }
         }
-        Ok(self.ast)
+        &self.ast
     }
 
     // PRATT PARSING >>>
@@ -114,10 +122,11 @@ impl Parser {
             }
             OpenBrack => self.parse_array_literal(),
             If => self.parse_if_else_expr(),
-            _ => Err(ParserError::new(
-                "Expected an expression",
-                Some(token.clone()),
-            )),
+            _ => Err(ParserError::UnexpectedToken {
+                msg: "Expected an expression".into(),
+                peeking: Some(token.clone()),
+                span: token.span,
+            }),
         }
     }
 
@@ -240,8 +249,12 @@ impl Parser {
                                 continue;
                             }
 
-                            return ParserError::new("Expected ',' or ']'", self.peek().cloned())
-                                .wrap();
+                            return ParserError::unexpected_token(
+                                "Expected ',' or ']'",
+                                self.peek().cloned(),
+                                span,
+                            )
+                            .wrap();
                         }
                     }
                     self.end_span(&mut span);
@@ -282,45 +295,69 @@ impl Parser {
 
     /// Parses the top level declarations within .mo files that declare items.
     fn parse_top_level_decls(&mut self) -> Result<(), ParserError> {
-        while let Some(token) = self.peek() {
-            match token.kind {
-                TokenKind::Use => {
-                    let use_decl = self.parse_use_decl()?;
-                    self.ast.push(use_decl);
+        loop {
+            if let Some(token) = self.peek().cloned() {
+                match token.kind {
+                    TokenKind::Use => {
+                        let use_decl = self.parse_use_decl()?;
+                        self.ast.push(use_decl);
+                    }
+                    TokenKind::Struct => {
+                        let struct_decl = self.parse_struct_decl()?;
+                        self.ast.push(struct_decl);
+                    }
+                    TokenKind::Sum => {
+                        let sum_decl = self.parse_sum_decl()?;
+                        self.ast.push(sum_decl);
+                    }
+                    TokenKind::Fn => {
+                        let fn_decl = self.parse_fn_decl()?;
+                        self.ast.push(fn_decl);
+                    }
+                    TokenKind::Trait => {
+                        let trait_decl = self.parse_trait_decl()?;
+                        self.ast.push(trait_decl);
+                    }
+                    TokenKind::LineBreak => {
+                        self.advance();
+                        continue; // continue for now
+                    }
+                    TokenKind::EndOfFile => {
+                        self.advance();
+                        break;
+                    }
+                    _ => {
+                        // Just add error, don't stop the loop...
+                        self.errors.push(ParserError::unexpected_token(
+                            "Unexpected token parsing top-level declarations",
+                            Some(token.clone()),
+                            token.span,
+                        ));
+                        self.synchronize_top_level();
+                    }
                 }
-                TokenKind::Struct => {
-                    let struct_decl = self.parse_struct_decl()?;
-                    self.ast.push(struct_decl);
-                }
-                TokenKind::Sum => {
-                    let sum_decl = self.parse_sum_decl()?;
-                    self.ast.push(sum_decl);
-                }
-                TokenKind::Fn => {
-                    let fn_decl = self.parse_fn_decl()?;
-                    self.ast.push(fn_decl);
-                }
-                TokenKind::Trait => {
-                    let trait_decl = self.parse_trait_decl()?;
-                    self.ast.push(trait_decl);
-                }
-                TokenKind::LineBreak => {
-                    self.advance();
-                    continue; // continue for now
-                }
-                TokenKind::EndOfFile => {
-                    self.advance();
-                    break;
-                }
-                _ => {
-                    return Err(ParserError::new(
-                        "Unexpected token parsing top-level declarations",
-                        Some(token.clone()),
-                    ));
-                }
+            } else {
+                break;
             }
         }
         Ok(())
+    }
+
+    fn synchronize_top_level(&mut self) {
+        // Consume the offending token that triggered the error.
+        // If you don't do this, you might end up in an infinite loop 
+        // re-evaluating the same bad token.
+        self.advance(); 
+    
+        // Skip tokens until we find something that looks like 
+        // the start of a valid top-level declaration.
+        self.skip_tokens_unless_of_kinds(&[
+            TokenKind::Fn,
+            TokenKind::Struct,
+            TokenKind::Use,
+            TokenKind::Sum,
+            TokenKind::Trait,
+        ]);
     }
 
     // Parsing:
@@ -371,11 +408,13 @@ impl Parser {
                 if self.matches_advance(TokenKind::Comma) {
                     continue;
                 }
-                return ParserError::new(
+                let token = self.peek().cloned();
+                self.errors.push(ParserError::unexpected_token(
                     "Expected argument delimiter ',' or closed parenthesis ')'",
-                    self.peek().cloned(),
-                )
-                .wrap();
+                    token.clone(),
+                    token.unwrap().span,
+                ));
+                self.advance();
             }
         }
         // Parse return type
@@ -464,9 +503,11 @@ impl Parser {
                         }
                         continue;
                     }
-                    return Err(ParserError::new(
+                    let token = self.peek();
+                    return Err(ParserError::unexpected_token(
                         "Expected ',' or ')'",
-                        self.peek().cloned(),
+                        token.cloned(),
+                        token.unwrap().span,
                     ));
                 }
             }
@@ -499,9 +540,11 @@ impl Parser {
                             if self.matches_advance(TokenKind::Comma) {
                                 continue;
                             }
-                            return Err(ParserError::new(
+                            let token = self.peek();
+                            return Err(ParserError::unexpected_token(
                                 "Expected ',' or ']'",
-                                self.peek().cloned(),
+                                token.cloned(),
+                                token.unwrap().span,
                             ));
                         }
                     }
@@ -518,6 +561,7 @@ impl Parser {
     }
 
     fn parse_stmt(&mut self) -> Result<Stmt, ParserError> {
+        let mut span = self.start_span_at_next(); // this span is only used when no statement could be parsed
         if let Some(token) = self.peek().cloned() {
             match token.kind {
                 TokenKind::Ret => return self.parse_ret_stmt(),
@@ -554,9 +598,11 @@ impl Parser {
             if !self.matches_any(&[TokenKind::LineBreak, TokenKind::Semicolon])
                 && !self.matches(TokenKind::CloseBrace)
             {
-                return Err(ParserError::new(
+                let token = self.peek();
+                return Err(ParserError::unexpected_token(
                     "Expected newline or semicolon after expression statement",
-                    self.peek().cloned(),
+                    token.cloned(),
+                    token.unwrap().span,
                 ));
             }
 
@@ -564,9 +610,12 @@ impl Parser {
             self.skip_line_terminators();
             return Ok(Stmt::new(StmtKind::Expr(expr), span));
         }
-        Err(ParserError::new(
+
+        self.end_span(&mut span);
+        Err(ParserError::unexpected_token(
             "Couldn't parse statement",
-            self.current_token(),
+            self.peek().cloned(),
+            span,
         ))
     }
 
@@ -658,9 +707,12 @@ impl Parser {
                     }
                     continue;
                 }
-                return ParserError::new(
+
+                let token = self.peek();
+                return ParserError::unexpected_token(
                     "Expected comma ',' or closed bracket ']'",
-                    self.peek().cloned(),
+                    token.cloned(),
+                    token.unwrap().span,
                 )
                 .wrap();
             }
@@ -672,6 +724,7 @@ impl Parser {
     #[track_caller]
     fn parse_type_expr(&mut self) -> Result<TypeExpr, ParserError> {
         debug!("parsing type expr from: {}", std::panic::Location::caller());
+        let mut span = self.start_span_at_next();
         // array type
         let mut array_length = None;
         if self.matches_advance(TokenKind::OpenBrack) {
@@ -716,9 +769,11 @@ impl Parser {
                         if self.matches_advance(TokenKind::Comma) {
                             continue;
                         }
-                        return ParserError::new(
+                        let token = self.peek();
+                        return ParserError::unexpected_token(
                             "Expected ',' or ']' after generic type argument",
-                            self.peek().cloned(),
+                            token.cloned(),
+                            token.unwrap().span,
                         )
                         .wrap();
                     }
@@ -732,7 +787,8 @@ impl Parser {
             // not generic, just simple ident.
             return Ok(TypeExpr::Ident(base_ident));
         }
-        ParserError::new("Expected type expression", self.peek().cloned()).wrap()
+        self.end_span(&mut span);
+        ParserError::unexpected_token("Expected type expression", self.peek().cloned(), span).wrap()
     }
 
     #[allow(dead_code)]
@@ -767,9 +823,11 @@ impl Parser {
                     }
                     continue;
                 }
-                return ParserError::new(
+                let token = self.peek();
+                return ParserError::unexpected_token(
                     "Expected argument delimiter ',' or closed parenthesis ')'",
-                    self.peek().cloned(),
+                    token.cloned(),
+                    token.unwrap().span,
                 )
                 .wrap();
             }
@@ -909,12 +967,15 @@ impl Parser {
             }
         }
         self.end_span(&mut span);
-        Ok(Decl::new(DeclKind::Struct {
-            ident: struct_ident,
-            fields,
-            generics,
-            impl_traits,
-        }, span))
+        Ok(Decl::new(
+            DeclKind::Struct {
+                ident: struct_ident,
+                fields,
+                generics,
+                impl_traits,
+            },
+            span,
+        ))
     }
 
     fn parse_sum_decl(&mut self) -> Result<Decl, ParserError> {
@@ -1002,12 +1063,15 @@ impl Parser {
 
         self.end_span(&mut span);
 
-        Ok(Decl::new(DeclKind::Sum {
-            ident: sum_ident,
-            generics,
-            impl_traits,
-            variants,
-        }, span))
+        Ok(Decl::new(
+            DeclKind::Sum {
+                ident: sum_ident,
+                generics,
+                impl_traits,
+                variants,
+            },
+            span,
+        ))
     }
 
     fn parse_trait_decl(&mut self) -> Result<Decl, ParserError> {
@@ -1038,11 +1102,14 @@ impl Parser {
 
         self.end_span(&mut span);
 
-        Ok(Decl::new(DeclKind::Trait {
-            ident,
-            generics,
-            methods,
-        }, span))
+        Ok(Decl::new(
+            DeclKind::Trait {
+                ident,
+                generics,
+                methods,
+            },
+            span,
+        ))
     }
 
     // :Expressions
@@ -1061,7 +1128,7 @@ impl Parser {
         let mut path_parts = VecDeque::new();
         path_parts.push_back(first_ident);
 
-        while self.is_next_of_type(TokenKind::Colon) {
+        while self.is_next_of_kind(TokenKind::Colon) {
             if let Some(next_token) = self.peek_nth(1) {
                 if next_token.kind == TokenKind::Ident {
                     self.advance(); // consume ':'
@@ -1136,7 +1203,7 @@ impl Parser {
         }
     }
 
-    /// Skips tokens that are of any of the kinds given.
+    /// Skips tokens that are of any of the kinds given
     #[allow(dead_code)]
     fn skip_tokens_of_kinds(&mut self, token_kinds: &[TokenKind]) {
         loop {
@@ -1147,6 +1214,33 @@ impl Parser {
                 } else {
                     break;
                 }
+            } else {
+                break;
+            }
+        }
+    }
+
+    /// Skips all tokens that are not of the given kinds until it hits a token of the kinds given
+    fn skip_tokens_unless_of_kinds(&mut self, token_kinds: &[TokenKind]) {
+        self.skip_tokens_if_predicate(|parser| !parser.is_next_of_kinds(token_kinds));
+    }
+
+    /// Skips all tokens if the predicate evaluates to true until it evaluates to false
+    fn skip_tokens_if_predicate<F>(&mut self, predicate: F)
+    where
+        F: Fn(&mut Self) -> bool,
+    {
+        loop {
+            if let Some(token) = self.peek().cloned() {
+                if predicate(self) {
+                    let token = token.clone();
+                    self.advance();
+                    debug!("Skipped token: {}", token);
+                } else {
+                    break;
+                }
+            } else {
+                break;
             }
         }
     }
@@ -1166,7 +1260,7 @@ impl Parser {
 
     /// checks if next token is of one of the given types, then moves on to that token
     fn matches_any_advance(&mut self, tokens: &[TokenKind]) -> bool {
-        if self.is_next_of_types(tokens) {
+        if self.is_next_of_kinds(tokens) {
             self.advance();
             return true;
         }
@@ -1176,7 +1270,7 @@ impl Parser {
     #[track_caller]
     fn matches_advance(&mut self, token: TokenKind) -> bool {
         debug!("{}", std::panic::Location::caller());
-        if self.is_next_of_type(token) {
+        if self.is_next_of_kind(token) {
             self.advance();
             return true;
         }
@@ -1185,7 +1279,7 @@ impl Parser {
 
     /// checks if next token is of one of the given types
     fn matches_any(&mut self, tokens: &[TokenKind]) -> bool {
-        if self.is_next_of_types(tokens) {
+        if self.is_next_of_kinds(tokens) {
             return true;
         }
         false
@@ -1195,7 +1289,7 @@ impl Parser {
     #[track_caller]
     fn matches(&mut self, token: TokenKind) -> bool {
         debug!("{}", std::panic::Location::caller());
-        if self.is_next_of_type(token) {
+        if self.is_next_of_kind(token) {
             return true;
         }
         false
@@ -1229,9 +1323,10 @@ impl Parser {
     }
 
     // checks if the following token is of the given type.
-    fn is_next_of_type(&mut self, token_type: TokenKind) -> bool {
+    fn is_next_of_kind(&mut self, token_type: TokenKind) -> bool {
         if let Some(current_token) = self.peek() {
             if token_type == current_token.kind && token_type != TokenKind::EndOfFile {
+                // TODO: Check if EndOfFile check is necessary
                 return true;
             }
         }
@@ -1239,9 +1334,9 @@ impl Parser {
     }
 
     // checks if the following token is of one of the given types.
-    fn is_next_of_types(&mut self, tokens: &[TokenKind]) -> bool {
+    fn is_next_of_kinds(&mut self, tokens: &[TokenKind]) -> bool {
         for token in tokens {
-            if self.is_next_of_type(*token) {
+            if self.is_next_of_kind(*token) {
                 return true;
             }
         }
@@ -1250,20 +1345,30 @@ impl Parser {
 
     // if next token is of given type, advances. If not, return an error with given message.
     fn try_consume_token(&mut self, token_type: TokenKind, msg: &str) -> Result<(), ParserError> {
-        if self.is_next_of_type(token_type) {
+        if self.is_next_of_kind(token_type) {
             self.advance();
             return Ok(());
         }
-        Err(ParserError::new(msg, self.peek().cloned()))
+        let token = self.peek();
+        Err(ParserError::unexpected_token(
+            msg,
+            token.cloned(),
+            token.unwrap().span,
+        ))
     }
 
     /// If next token is of any of given types, advances. If not, return an error with given message.
     fn try_consume_token2(&mut self, tokens: &[TokenKind], msg: &str) -> Result<(), ParserError> {
-        if self.is_next_of_types(tokens) {
+        if self.is_next_of_kinds(tokens) {
             self.advance();
             return Ok(());
         }
-        Err(ParserError::new(msg, self.peek().cloned()))
+        let token = self.peek();
+        Err(ParserError::unexpected_token(
+            msg,
+            token.cloned(),
+            token.unwrap().span,
+        ))
     }
 
     /// Prints some debug info about the current state of the parser

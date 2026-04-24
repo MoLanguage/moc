@@ -7,3 +7,4 @@ edition = "2024"
 derive_more = { version = "2.1.1", features = ["display"] }
 ron = "0.12.1"
 serde = { version = "1.0.228", features = ["derive"] }
+thiserror = "2.0.18"
